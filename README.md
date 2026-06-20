@@ -128,6 +128,12 @@
       <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>
+      <td>Smart Locks<br>(jtmspro)</td>
+      <td>Raykube A1 Ultra / A1 Pro Max</td>
+      <td>'hc7n0urm'</td>
+      <td>Experimental TuyaOS FD50 local BLE remote unlock support. See <a href="docs/raykube-a1-ultra-fd50.md">protocol notes</a>.</td>
+    </tr>
+    <tr>
       <td>Climate<br>(wk)</td>
       <td>Thermostatic Radiator Valve</td>
       <td>'drlajpqc', 'nhj2j7su'</td>

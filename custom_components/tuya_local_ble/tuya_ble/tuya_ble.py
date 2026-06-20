@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import logging
 import secrets
@@ -404,6 +405,13 @@ class TuyaBLEDevice:
             return ""
 
     @property
+    def ble_unlock_check(self) -> str:
+        if self._device_info is not None and self._device_info.ble_unlock_check:
+            return self._device_info.ble_unlock_check
+        else:
+            return ""
+
+    @property
     def device_version(self) -> str:
         return self._device_version
 
@@ -603,7 +611,9 @@ class TuyaBLEDevice:
                     self._client = client
                     try:
                         await self._client.start_notify(
-                            CHARACTERISTIC_NOTIFY, self._notification_handler
+                            CHARACTERISTIC_NOTIFY,
+                            self._notification_handler,
+                            bluez={"use_start_notify": True},
                         )
                     except:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
                         self._client = None
@@ -617,9 +627,12 @@ class TuyaBLEDevice:
                     _LOGGER.debug(
                         "%s: Sending device info request", self.address)
                     try:
+                        device_info_payload = (
+                            b"\x00\xf3" if self.product_id == "hc7n0urm" else bytes(0)
+                        )
                         if not await self._send_packet_while_connected(
                             TuyaBLECode.FUN_SENDER_DEVICE_INFO,
-                            bytes(0),
+                            device_info_payload,
                             0,
                             True,
                         ):
@@ -778,10 +791,17 @@ class TuyaBLEDevice:
 
             if packet_num == 0:
                 packet += self._pack_int(length)
-                packet += pack(">B", self._protocol_version << 4)
+                packet_protocol_version = self._protocol_version
+                if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
+                    packet_protocol_version = 2
+                packet += pack(">B", packet_protocol_version << 4)
 
+            chunk_mtu = GATT_MTU
+            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id == "hc7n0urm":
+                # TuyaOS FD50 locks use MTU exchange and expect DEVICE_INFO in one write.
+                chunk_mtu = 244
             data_part = encrypted[
-                pos:pos + GATT_MTU - len(packet)  # fmt: skip
+                pos:pos + chunk_mtu - len(packet)  # fmt: skip
             ]
             packet += data_part
             command.append(packet)
@@ -1054,6 +1074,73 @@ class TuyaBLEDevice:
 
         self._fire_callbacks(datapoints)
 
+    def _parse_datapoints_v4(self, data: bytes) -> None:
+        """Parse Tuya BLE V4 datapoint/event payloads.
+
+        Observed on TuyaOS FD50 locks after the 4-byte header as:
+        dp_id:1, flags_or_code:3, dp_type:1, len:2, value:len.
+        """
+        datapoints: list[TuyaBLEDataPoint] = []
+        pos = 4 if len(data) >= 4 else 0
+        while len(data) - pos >= 7:
+            id = data[pos]
+            pos += 1
+            flags = int.from_bytes(data[pos:pos + 3], "big")
+            pos += 3
+            type_value = data[pos]
+            pos += 1
+            try:
+                type = TuyaBLEDataPointType(type_value)
+            except ValueError:
+                _LOGGER.debug("%s: Unknown V4 datapoint type %s", self.address, type_value)
+                break
+            data_len = int.from_bytes(data[pos:pos + 2], "big")
+            pos += 2
+            next_pos = pos + data_len
+            if next_pos > len(data):
+                raise TuyaBLEDataLengthError()
+            raw_value = data[pos:next_pos]
+            match type:
+                case (TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP):
+                    value = raw_value
+                case TuyaBLEDataPointType.DT_BOOL:
+                    value = int.from_bytes(raw_value, "big") != 0
+                case (TuyaBLEDataPointType.DT_VALUE | TuyaBLEDataPointType.DT_ENUM):
+                    value = int.from_bytes(raw_value, "big", signed=True)
+                case TuyaBLEDataPointType.DT_STRING:
+                    value = raw_value.decode()
+            _LOGGER.debug(
+                "%s: Received V4 datapoint update, id: %s, type: %s: value: %s",
+                self.address,
+                id,
+                type.name,
+                value,
+            )
+            if self.product_id != "hc7n0urm":
+                self._datapoints._update_from_device(id, time.time(), flags, type, value)
+                datapoints.append(self._datapoints[id])
+
+            if (
+                self.product_id == "hc7n0urm"
+                and type == TuyaBLEDataPointType.DT_RAW
+                and raw_value == b"\x00\x01\x01"
+                and not self._input_expected_responses
+            ):
+                # Observed after a manual/open event when the lock reconnects.
+                # V4 event ids are sequence-like, so mirror this event into the
+                # fixed state datapoint used by the lock entity.
+                self._datapoints._update_from_device(
+                    118,
+                    time.time(),
+                    flags,
+                    TuyaBLEDataPointType.DT_ENUM,
+                    1,
+                )
+                datapoints.append(self._datapoints[118])
+            pos = next_pos
+
+        self._fire_callbacks(datapoints)
+
     def _handle_command_or_response(
         self, seq_num: int, response_to: int, code: TuyaBLECode, data: bytes
     ) -> None:
@@ -1151,6 +1238,10 @@ class TuyaBLEDevice:
                 self._parse_datapoints_v3(time.time(), flags, data, pos)
                 data = pack(">HBB", dp_seq_num, flags, 0)
                 asyncio.create_task(self._send_response(code, data, seq_num))
+
+            case TuyaBLECode.FUN_RECEIVE_DP_V4 | TuyaBLECode.FUN_RECEIVE_TIME_DP_V4:
+                self._parse_datapoints_v4(data)
+                asyncio.create_task(self._send_response(code, bytes(0), seq_num))
 
         if response_to != 0:
             future = self._input_expected_responses.pop(response_to, None)
@@ -1298,11 +1389,71 @@ class TuyaBLEDevice:
             data += pack(">BBB", dp.id, int(dp.type.value), len(value))
             data += value
 
+        if self.product_id == "hc7n0urm":
+            if 6 in datapoint_ids:
+                # Raykube A1 Ultra / TuyaOS FD50 remote unlock command captured
+                # from the official app. It is built from the per-device
+                # `ble_unlock_check` raw status value reported by Tuya Cloud.
+                raykube_unlock_v4_data = self._build_raykube_unlock_v4_data()
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, raykube_unlock_v4_data, True
+                )
+            elif 46 in datapoint_ids:
+                # Candidate Raykube physical lock command (`manual_lock` / DP 46).
+                raykube_lock_v4_data = bytes.fromhex("00000000012e00000101")
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, raykube_lock_v4_data, True
+                )
+            else:
+                _LOGGER.debug(
+                    "%s: Skipping unsupported Raykube legacy datapoint write: %s",
+                    self.address,
+                    datapoint_ids,
+                )
+            return
+
         #await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data)
         await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data, False)
 
+    def _build_raykube_unlock_v4_data(self) -> bytes:
+        """Build the Raykube/TuyaOS FD50 V4 remote-unlock payload.
+
+        `ble_unlock_check` is a base64 encoded raw Tuya status field. For the
+        verified lock it decodes to:
+        00 01 ff ff <8 ASCII digits> 01 <4 bytes> 00 00
+
+        The V4 command payload sent by the official app is:
+        00000000 01 47 000013 ffff 0001 <8 ASCII digits> 01 <4 bytes> 00 01
+        """
+        if not self.ble_unlock_check:
+            raise TuyaBLEDeviceError(1)
+
+        try:
+            check = base64.b64decode(self.ble_unlock_check)
+        except Exception as exc:
+            raise TuyaBLEDeviceError(1) from exc
+
+        if len(check) < 19:
+            raise TuyaBLEDataLengthError()
+
+        prefix = check[2:4]
+        check_code = check[4:12]
+        check_key = check[13:17]
+        return b"\x00\x00\x00\x00\x01\x47\x00\x00\x13" + prefix + b"\x00\x01" + check_code + b"\x01" + check_key + b"\x00\x01"
+
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
+        if self.product_id == "hc7n0urm" and 6 in datapoint_ids:
+            # This battery lock may be disconnected after Home Assistant startup,
+            # so protocol_version can still be unknown here. The Raykube V4 path
+            # establishes BLE connection and performs DEVICE_INFO/PAIR on demand.
+            await self._send_datapoints_v3(datapoint_ids)
+            return
+        if self.product_id == "hc7n0urm" and 46 in datapoint_ids:
+            # Candidate physical lock command; allow on-demand connect.
+            await self._send_datapoints_v3(datapoint_ids)
+            return
+
         if self._protocol_version == 3:
             await self._send_datapoints_v3(datapoint_ids)
         else:

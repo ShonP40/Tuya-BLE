@@ -25,6 +25,7 @@ from .const import (
     CONF_PRODUCT_ID,
     CONF_DEVICE_NAME,
     CONF_PRODUCT_NAME,
+    CONF_BLE_UNLOCK_CHECK,
     DOMAIN,
 )
 
@@ -39,6 +40,7 @@ CONF_TUYA_DEVICE_KEYS = [
     CONF_DEVICE_NAME,
     CONF_PRODUCT_NAME,
     CONF_PRODUCT_MODEL,
+    CONF_BLE_UNLOCK_CHECK,
 ]
 
 class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
@@ -87,6 +89,7 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
                 credentials.get(CONF_DEVICE_NAME, ""),
                 credentials.get(CONF_PRODUCT_MODEL, ""),
                 credentials.get(CONF_PRODUCT_NAME, ""),
+                credentials.get(CONF_BLE_UNLOCK_CHECK, ""),
             )
             _LOGGER.debug("Retrieved: %s", result)
 
