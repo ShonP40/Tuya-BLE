@@ -316,6 +316,13 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
         self._attr_options = mapping.description.options
 
     @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if self._device.product_id == "hc7n0urm" and self._mapping.dp_id in (31, 48):
+            return True
+        return super().available
+
+    @property
     def current_option(self) -> str | None:
         """Return the selected entity option to represent the entity state."""
         # Raw value
