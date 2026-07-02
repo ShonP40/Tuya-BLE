@@ -80,7 +80,23 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                         key="manual_lock"
                     ),
                 ),
-            ]
+            ],
+            "hc7n0urm":  # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
+            [
+                TuyaBLELockMapping(
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # V4 events are parsed, but the full state model is still unknown.
+                    # The entity reflects successful remote unlock after V4 ACK.
+                    dp_id=118,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
         }
     ), 
 }
@@ -201,6 +217,24 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             False,
         )
 
+        if self._device.product_id == "hc7n0urm" and self._target_state == LockState.UNLOCKED:
+            await datapoint.set_value(True)
+            self._current_state = LockState.UNLOCKED
+            self._commanded = False
+            self._isjammed = False
+            self._update_attrs()
+            self.async_write_ha_state()
+            return
+
+        if self._device.product_id == "hc7n0urm" and self._target_state == LockState.LOCKED:
+            await datapoint.set_value(True)
+            self._current_state = LockState.LOCKED
+            self._commanded = False
+            self._isjammed = False
+            self._update_attrs()
+            self.async_write_ha_state()
+            return
+
         #Gimdow need true to activate lock/unlock commands
         self._hass.create_task(datapoint.set_value(True))
         self._commanded = True
@@ -232,6 +266,11 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        if self._device.product_id == "hc7n0urm":
+            # Battery locks sleep and may not keep an active BLE connection between
+            # commands. Allow Home Assistant to call unlock; the command path will
+            # establish a connection on demand.
+            return True
         result = super().available
         if result and self._mapping.is_available:
             result = self._mapping.is_available(self, self._product)
@@ -261,4 +300,3 @@ async def async_setup_entry(
                 )
             )
     async_add_entities(entities)
-

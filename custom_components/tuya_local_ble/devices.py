@@ -205,6 +205,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="A1 PRO MAX",
             ),
+            "hc7n0urm":  # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
+            TuyaBLEProductInfo(
+                name="Raykube A1 Ultra",
+            ),
         },
     ),    
     "szjqr": TuyaBLECategoryInfo(

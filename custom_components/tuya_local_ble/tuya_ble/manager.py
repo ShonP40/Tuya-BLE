@@ -14,6 +14,7 @@ class TuyaBLEDeviceCredentials:
     device_name: str | None
     product_model: str | None
     product_name: str | None
+    ble_unlock_check: str | None = None
 
     def __str__(self):
         return (
@@ -24,13 +25,15 @@ class TuyaBLEDeviceCredentials:
             "product_id: %s, "
             "device_name: %s, "
             "product_model: %s, "
-            "product_name: %s"
+            "product_name: %s, "
+            "ble_unlock_check: %s"
         ) % (
             self.category,
             self.product_id,
             self.device_name,
             self.product_model,
             self.product_name,
+            "set" if self.ble_unlock_check else "not set",
         )
 
 class AbstaractTuyaBLEDeviceManager(ABC):
@@ -56,6 +59,8 @@ class AbstaractTuyaBLEDeviceManager(ABC):
         product_id: str | None,
         device_name: str | None,
         product_name: str | None,
+        product_model: str | None = None,
+        ble_unlock_check: str | None = None,
     ) -> TuyaBLEDeviceCredentials | None:
         """Checks and creates credentials of the Tuya BLE device."""
         if (
@@ -72,7 +77,9 @@ class AbstaractTuyaBLEDeviceManager(ABC):
                 category,
                 product_id,
                 device_name,
+                product_model,
                 product_name,
+                ble_unlock_check,
             )
         else:
             return None

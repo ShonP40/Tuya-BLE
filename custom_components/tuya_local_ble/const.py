@@ -17,6 +17,7 @@ CONF_PRODUCT_ID: Final = "product_id"
 CONF_DEVICE_NAME: Final = "device_name"
 CONF_PRODUCT_MODEL: Final = "product_model"
 CONF_PRODUCT_NAME: Final = "product_name"
+CONF_BLE_UNLOCK_CHECK: Final = "ble_unlock_check"
 
 CONF_CRED_FILE = DOMAIN + "/devices.json"
 
@@ -35,4 +36,3 @@ FINGERBOT_MODE_PUSH: Final = "push"
 FINGERBOT_MODE_SWITCH: Final = "switch"
 FINGERBOT_MODE_PROGRAM: Final = "program"
 FINGERBOT_BUTTON_EVENT: Final = "fingerbot_button_pressed"
-
