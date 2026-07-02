@@ -1170,6 +1170,8 @@ class TuyaBLEDevice:
             value_pos = pos + 5
             next_pos = value_pos + data_len
 
+            # Command-style status used in some captures:
+            #   01 <dp_id> <len:3> <value:len>
             if op == 1 and dp_id in (9, 31, 48) and 1 <= data_len <= len(data) - value_pos:
                 raw_value = data[value_pos:next_pos]
                 value = int.from_bytes(raw_value, "big", signed=False)
@@ -1190,6 +1192,65 @@ class TuyaBLEDevice:
                 parsed_ranges.append((pos, next_pos))
                 pos = next_pos
                 continue
+
+            # Event-style echo/status seen from Raykube after V4 writes:
+            #   <event> 00 00 <dp_id> <len:3> <value:len>
+            # Example: aa 0000 1f 000001 03 => DP31 value 3.
+            if len(data) - pos >= 8 and data[pos + 1:pos + 3] == b"\x00\x00":
+                dp_id = data[pos + 3]
+                data_len = int.from_bytes(data[pos + 4:pos + 7], "big")
+                value_pos = pos + 7
+                next_pos = value_pos + data_len
+                if dp_id in (9, 31, 48) and 1 <= data_len <= len(data) - value_pos:
+                    raw_value = data[value_pos:next_pos]
+                    value = int.from_bytes(raw_value, "big", signed=False)
+                    _LOGGER.debug(
+                        "%s: Received Raykube V4 event datapoint update, id: %s, type: DT_ENUM: value: %s",
+                        self.address,
+                        dp_id,
+                        value,
+                    )
+                    self._datapoints._update_from_device(
+                        dp_id,
+                        time.time(),
+                        0,
+                        TuyaBLEDataPointType.DT_ENUM,
+                        value,
+                    )
+                    datapoints.append(self._datapoints[dp_id])
+                    parsed_ranges.append((pos, next_pos))
+                    pos = next_pos
+                    continue
+
+                # Some Raykube status events include the Tuya DP type byte:
+                #   <event> 00 00 <dp_id> <dp_type> <len:2> <value:len>
+                # Example: a1 0000 09 04 0001 00 => DP9 enum value 0.
+                if len(data) - pos >= 8:
+                    dp_type = data[pos + 4]
+                    data_len = int.from_bytes(data[pos + 5:pos + 7], "big")
+                    value_pos = pos + 7
+                    next_pos = value_pos + data_len
+                    if dp_id in (9, 31, 48) and dp_type in (0, 4) and 1 <= data_len <= len(data) - value_pos:
+                        raw_value = data[value_pos:next_pos]
+                        value = int.from_bytes(raw_value, "big", signed=False)
+                        _LOGGER.debug(
+                            "%s: Received Raykube V4 typed event datapoint update, id: %s, type: %s: value: %s",
+                            self.address,
+                            dp_id,
+                            dp_type,
+                            value,
+                        )
+                        self._datapoints._update_from_device(
+                            dp_id,
+                            time.time(),
+                            0,
+                            TuyaBLEDataPointType.DT_ENUM,
+                            value,
+                        )
+                        datapoints.append(self._datapoints[dp_id])
+                        parsed_ranges.append((pos, next_pos))
+                        pos = next_pos
+                        continue
 
             pos += 1
 
