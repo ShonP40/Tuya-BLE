@@ -195,7 +195,30 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                         "mdi:battery-alert",
                     ],
                 ),
-            ]
+            ],
+            "hc7n0urm":  # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
+            [
+                TuyaBLESensorMapping(
+                    dp_id=9,
+                    description=SensorEntityDescription(
+                        key="battery_state",
+                        icon="mdi:battery",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=[
+                            BATTERY_STATE_HIGH,
+                            BATTERY_STATE_NORMAL,
+                            BATTERY_STATE_LOW,
+                            BATTERY_STATE_LOW,
+                        ],
+                    ),
+                    icons=[
+                        "mdi:battery-check",
+                        "mdi:battery-50",
+                        "mdi:battery-alert",
+                        "mdi:battery-alert",
+                    ],
+                ),
+            ],
         }
     ),      
     "szjqr": TuyaBLECategorySensorMapping(

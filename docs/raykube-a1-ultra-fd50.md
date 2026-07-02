@@ -1,6 +1,6 @@
 # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
 
-This branch adds experimental local BLE support for Raykube A1 Ultra / A1 Pro Max locks using TuyaOS FD50 BLE service.
+Adds experimental local BLE support for Raykube A1 Ultra / A1 Pro Max locks using TuyaOS FD50 BLE service.
 
 ## Tested device
 
@@ -24,7 +24,7 @@ Remote unlock and remote lock have both been physically verified. Remote unlock 
 
 ## Required `devices.json` fields
 
-Use the same shape as other devices, with the Raykube product ID:
+Use the same schema as other devices, with the Raykube product ID:
 
 ```json
 {
@@ -42,8 +42,6 @@ Use the same shape as other devices, with the Raykube product ID:
   }
 }
 ```
-
-Do not publish your real `uuid`, `local_key`, `device_id`, or `ble_unlock_check`.
 
 `ble_unlock_check` is the raw base64 status value reported by Tuya Cloud for the device. It is device-specific and is used to build the V4 remote-unlock command. You can obtain it from the Tuya IoT OpenAPI device details/status response where the status code is `ble_unlock_check`.
 

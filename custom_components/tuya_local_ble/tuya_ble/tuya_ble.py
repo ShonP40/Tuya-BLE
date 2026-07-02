@@ -1077,9 +1077,16 @@ class TuyaBLEDevice:
     def _parse_datapoints_v4(self, data: bytes) -> None:
         """Parse Tuya BLE V4 datapoint/event payloads.
 
-        Observed on TuyaOS FD50 locks after the 4-byte header as:
-        dp_id:1, flags_or_code:3, dp_type:1, len:2, value:len.
+        Most devices are still parsed with the legacy V3-like layout below.
+        Raykube/TuyaOS FD50 locks use the command-style V4 body handled by
+        `_parse_raykube_datapoints_v4`: header:4, op:1, dp_id:1, len:3,
+        value:len.  Only safe configuration/status datapoints are surfaced for
+        that lock; ambiguous lock-state events are intentionally ignored.
         """
+        if self.product_id == "hc7n0urm":
+            self._parse_raykube_datapoints_v4(data)
+            return
+
         datapoints: list[TuyaBLEDataPoint] = []
         pos = 4 if len(data) >= 4 else 0
         while len(data) - pos >= 7:
@@ -1137,6 +1144,64 @@ class TuyaBLEDevice:
                     1,
                 )
                 datapoints.append(self._datapoints[118])
+            pos = next_pos
+
+        self._fire_callbacks(datapoints)
+
+    def _parse_raykube_datapoints_v4(self, data: bytes) -> None:
+        """Parse Raykube/TuyaOS FD50 command-style V4 datapoint payloads.
+
+        Captured command/event bodies use:
+        00000000 01 <dp_id> <len:3> <value:len>
+
+        DP47/lock-state events are noisy on this lock and have previously
+        overwritten confirmed command state, so only non-lock status/config
+        datapoints are mirrored into Home Assistant here.
+        """
+        datapoints: list[TuyaBLEDataPoint] = []
+        pos = 4 if len(data) >= 4 else 0
+        while len(data) - pos >= 5:
+            op = data[pos]
+            pos += 1
+            dp_id = data[pos]
+            pos += 1
+            data_len = int.from_bytes(data[pos:pos + 3], "big")
+            pos += 3
+            next_pos = pos + data_len
+            if next_pos > len(data):
+                raise TuyaBLEDataLengthError()
+            raw_value = data[pos:next_pos]
+
+            if op != 1:
+                _LOGGER.debug(
+                    "%s: Skipping unsupported Raykube V4 op %s for dp %s",
+                    self.address,
+                    op,
+                    dp_id,
+                )
+            elif dp_id in (9, 31, 48) and data_len >= 1:
+                value = int.from_bytes(raw_value, "big", signed=False)
+                _LOGGER.debug(
+                    "%s: Received Raykube V4 datapoint update, id: %s, type: DT_ENUM: value: %s",
+                    self.address,
+                    dp_id,
+                    value,
+                )
+                self._datapoints._update_from_device(
+                    dp_id,
+                    time.time(),
+                    0,
+                    TuyaBLEDataPointType.DT_ENUM,
+                    value,
+                )
+                datapoints.append(self._datapoints[dp_id])
+            else:
+                _LOGGER.debug(
+                    "%s: Ignoring Raykube V4 datapoint/event, id: %s, raw: %s",
+                    self.address,
+                    dp_id,
+                    raw_value.hex(),
+                )
             pos = next_pos
 
         self._fire_callbacks(datapoints)
@@ -1404,6 +1469,12 @@ class TuyaBLEDevice:
                 await self._send_packet(
                     TuyaBLECode.FUN_SENDER_DPS_V4, raykube_lock_v4_data, True
                 )
+            elif set(datapoint_ids).issubset({31, 48}):
+                for dp_id in datapoint_ids:
+                    raykube_v4_data = self._build_raykube_v4_enum_data(dp_id)
+                    await self._send_packet(
+                        TuyaBLECode.FUN_SENDER_DPS_V4, raykube_v4_data, True
+                    )
             else:
                 _LOGGER.debug(
                     "%s: Skipping unsupported Raykube legacy datapoint write: %s",
@@ -1441,6 +1512,14 @@ class TuyaBLEDevice:
         check_key = check[13:17]
         return b"\x00\x00\x00\x00\x01\x47\x00\x00\x13" + prefix + b"\x00\x01" + check_code + b"\x01" + check_key + b"\x00\x01"
 
+    def _build_raykube_v4_enum_data(self, dp_id: int) -> bytes:
+        """Build a Raykube/TuyaOS FD50 one-byte V4 enum write."""
+        dp = self._datapoints[dp_id]
+        value = dp._get_value()
+        if len(value) != 1:
+            raise TuyaBLEDataLengthError()
+        return b"\x00\x00\x00\x00\x01" + bytes([dp_id]) + len(value).to_bytes(3, "big") + value
+
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
         if self.product_id == "hc7n0urm" and 6 in datapoint_ids:
@@ -1451,6 +1530,12 @@ class TuyaBLEDevice:
             return
         if self.product_id == "hc7n0urm" and 46 in datapoint_ids:
             # Candidate physical lock command; allow on-demand connect.
+            await self._send_datapoints_v3(datapoint_ids)
+            return
+        if self.product_id == "hc7n0urm" and set(datapoint_ids).issubset({31, 48}):
+            # Beep volume and lock direction use the same command-style V4
+            # write framing as DP46 and must be allowed before protocol_version
+            # is known on sleepy battery locks.
             await self._send_datapoints_v3(datapoint_ids)
             return
 
