@@ -1154,32 +1154,26 @@ class TuyaBLEDevice:
         Captured command/event bodies use:
         00000000 01 <dp_id> <len:3> <value:len>
 
-        DP47/lock-state events are noisy on this lock and have previously
-        overwritten confirmed command state, so only non-lock status/config
-        datapoints are mirrored into Home Assistant here.
+        The lock may also emit other V4 event bodies on the same message code.
+        Those frames should not make the integration disconnect, so this parser
+        scans for the safe command-style datapoints we understand and ignores
+        malformed/unknown frames instead of raising.
         """
         datapoints: list[TuyaBLEDataPoint] = []
-        pos = 4 if len(data) >= 4 else 0
+        pos = 0
+        parsed_ranges: list[tuple[int, int]] = []
+
         while len(data) - pos >= 5:
             op = data[pos]
-            pos += 1
-            dp_id = data[pos]
-            pos += 1
-            data_len = int.from_bytes(data[pos:pos + 3], "big")
-            pos += 3
-            next_pos = pos + data_len
-            if next_pos > len(data):
-                raise TuyaBLEDataLengthError()
-            raw_value = data[pos:next_pos]
+            dp_id = data[pos + 1]
+            data_len = int.from_bytes(data[pos + 2:pos + 5], "big")
+            value_pos = pos + 5
+            next_pos = value_pos + data_len
 
-            if op != 1:
-                _LOGGER.debug(
-                    "%s: Skipping unsupported Raykube V4 op %s for dp %s",
-                    self.address,
-                    op,
-                    dp_id,
-                )
-            elif dp_id in (9, 31, 48) and data_len >= 1:
+            # Command-style status used in some captures:
+            #   01 <dp_id> <len:3> <value:len>
+            if op == 1 and dp_id in (9, 31, 48) and 1 <= data_len <= len(data) - value_pos:
+                raw_value = data[value_pos:next_pos]
                 value = int.from_bytes(raw_value, "big", signed=False)
                 _LOGGER.debug(
                     "%s: Received Raykube V4 datapoint update, id: %s, type: DT_ENUM: value: %s",
@@ -1195,14 +1189,84 @@ class TuyaBLEDevice:
                     value,
                 )
                 datapoints.append(self._datapoints[dp_id])
-            else:
-                _LOGGER.debug(
-                    "%s: Ignoring Raykube V4 datapoint/event, id: %s, raw: %s",
-                    self.address,
-                    dp_id,
-                    raw_value.hex(),
-                )
-            pos = next_pos
+                parsed_ranges.append((pos, next_pos))
+                pos = next_pos
+                continue
+
+            # Event-style echo/status seen from Raykube after V4 writes:
+            #   <event> 00 00 <dp_id> <len:3> <value:len>
+            # Example: aa 0000 1f 000001 03 => DP31 value 3.
+            if len(data) - pos >= 8 and data[pos + 1:pos + 3] == b"\x00\x00":
+                dp_id = data[pos + 3]
+                data_len = int.from_bytes(data[pos + 4:pos + 7], "big")
+                value_pos = pos + 7
+                next_pos = value_pos + data_len
+                if dp_id in (9, 31, 48) and 1 <= data_len <= len(data) - value_pos:
+                    raw_value = data[value_pos:next_pos]
+                    value = int.from_bytes(raw_value, "big", signed=False)
+                    _LOGGER.debug(
+                        "%s: Received Raykube V4 event datapoint update, id: %s, type: DT_ENUM: value: %s",
+                        self.address,
+                        dp_id,
+                        value,
+                    )
+                    self._datapoints._update_from_device(
+                        dp_id,
+                        time.time(),
+                        0,
+                        TuyaBLEDataPointType.DT_ENUM,
+                        value,
+                    )
+                    datapoints.append(self._datapoints[dp_id])
+                    parsed_ranges.append((pos, next_pos))
+                    pos = next_pos
+                    continue
+
+                # Some Raykube status events include the Tuya DP type byte:
+                #   <event> 00 00 <dp_id> <dp_type> <len:2> <value:len>
+                # Example: a1 0000 09 04 0001 00 => DP9 enum value 0.
+                if len(data) - pos >= 8:
+                    dp_type = data[pos + 4]
+                    data_len = int.from_bytes(data[pos + 5:pos + 7], "big")
+                    value_pos = pos + 7
+                    next_pos = value_pos + data_len
+                    if dp_id in (9, 31, 48) and dp_type in (0, 4) and 1 <= data_len <= len(data) - value_pos:
+                        raw_value = data[value_pos:next_pos]
+                        value = int.from_bytes(raw_value, "big", signed=False)
+                        _LOGGER.debug(
+                            "%s: Received Raykube V4 typed event datapoint update, id: %s, type: %s: value: %s",
+                            self.address,
+                            dp_id,
+                            dp_type,
+                            value,
+                        )
+                        self._datapoints._update_from_device(
+                            dp_id,
+                            time.time(),
+                            0,
+                            TuyaBLEDataPointType.DT_ENUM,
+                            value,
+                        )
+                        datapoints.append(self._datapoints[dp_id])
+                        parsed_ranges.append((pos, next_pos))
+                        pos = next_pos
+                        continue
+
+            pos += 1
+
+        if not datapoints:
+            _LOGGER.debug(
+                "%s: Ignoring unsupported Raykube V4 payload: %s",
+                self.address,
+                data.hex(),
+            )
+        else:
+            _LOGGER.debug(
+                "%s: Parsed Raykube V4 datapoints from ranges %s in payload: %s",
+                self.address,
+                parsed_ranges,
+                data.hex(),
+            )
 
         self._fire_callbacks(datapoints)
 
