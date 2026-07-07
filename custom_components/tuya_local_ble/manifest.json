@@ -14,6 +14,7 @@
   "codeowners": ["@ShonP40"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
+  "requirements": ["pycryptodome==3.20.0"],
   "documentation": "https://github.com/ShonP40/Tuya-BLE",
   "iot_class": "local_push",
   "version": "0.1",
