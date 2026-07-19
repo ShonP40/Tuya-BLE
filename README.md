@@ -123,15 +123,9 @@
     </tr>
     <tr>
       <td>Smart Locks<br>(jtmspro)</td>
-      <td>Smart Lock</td>
-      <td>'rlyxv7pe'</td>
-      <td>Allows lock/unlock control and status monitoring.</td>
-    </tr>
-    <tr>
-      <td>Smart Locks<br>(jtmspro)</td>
       <td>Raykube A1 Ultra / A1 Pro Max</td>
-      <td>'hc7n0urm'</td>
-      <td>Experimental TuyaOS FD50 local BLE remote unlock support. See <a href="docs/raykube-a1-ultra-fd50.md">protocol notes</a>.</td>
+      <td>'rlyxv7pe', 'hc7n0urm'</td>
+      <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>
       <td>Climate<br>(wk)</td>
@@ -153,11 +147,6 @@
     </tr>
   </tbody>
 </table>
-
-<h2 align="center">Additional Note</h2>
-<p align="center">
-  This integration is a work-in-progress. More devices, categories, and features are planned.
-</p>
 
 <h2 align="center">Contributing</h2>
 <p align="center">
