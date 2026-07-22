@@ -24,7 +24,9 @@ from Crypto.Cipher import AES
 
 from .const import (
     CHARACTERISTIC_NOTIFY,
+    CHARACTERISTIC_NOTIFY_FD50,
     CHARACTERISTIC_WRITE,
+    CHARACTERISTIC_WRITE_FD50,
     GATT_MTU,
     MANUFACTURER_DATA_ID,
     RESPONSE_WAIT_TIMEOUT,
@@ -230,6 +232,9 @@ class TuyaBLEDevice:
         self._disconnected_callbacks: list[Callable[[], None]] = []
         self._current_seq_num = 1
         self._seq_num_lock = asyncio.Lock()
+
+        self._characteristic_notify = CHARACTERISTIC_NOTIFY
+        self._characteristic_write = CHARACTERISTIC_WRITE
 
         self._is_bound = False
         self._flags = 0
@@ -540,10 +545,24 @@ class TuyaBLEDevice:
             self._expected_disconnect = True
             self._client = None
             if client and client.is_connected:
-                await client.stop_notify(CHARACTERISTIC_NOTIFY)
+                await client.stop_notify(self._characteristic_notify)
                 await client.disconnect()
         async with self._seq_num_lock:
             self._current_seq_num = 1
+
+    def _select_characteristics(self, client: BleakClientWithServiceCache) -> None:
+        """Select the GATT channel actually exposed by the device."""
+        if client.services.get_characteristic(CHARACTERISTIC_NOTIFY):
+            self._characteristic_notify = CHARACTERISTIC_NOTIFY
+            self._characteristic_write = CHARACTERISTIC_WRITE
+        elif client.services.get_characteristic(CHARACTERISTIC_NOTIFY_FD50):
+            _LOGGER.debug(
+                "%s: legacy characteristics not present,"
+                " using FD50 GATT channel",
+                self.address,
+            )
+            self._characteristic_notify = CHARACTERISTIC_NOTIFY_FD50
+            self._characteristic_write = CHARACTERISTIC_WRITE_FD50
 
     async def _ensure_connected(self) -> None:
         """Ensure connection to device is established."""
@@ -609,9 +628,10 @@ class TuyaBLEDevice:
                     _LOGGER.debug("%s: Connected; RSSI: %s",
                                   self.address, self.rssi)
                     self._client = client
+                    self._select_characteristics(client)
                     try:
                         await self._client.start_notify(
-                            CHARACTERISTIC_NOTIFY,
+                            self._characteristic_notify,
                             self._notification_handler,
                             bluez={"use_start_notify": True},
                         )
@@ -968,7 +988,7 @@ class TuyaBLEDevice:
                 try:
                     # _LOGGER.debug("%s: Sending packet: %s", self.address, packet.hex())
                     await self._client.write_gatt_char(
-                        CHARACTERISTIC_WRITE,
+                        self._characteristic_write,
                         packet,
                         False,
                     )
