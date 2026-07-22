@@ -160,6 +160,21 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                     ),
                 ),
             ],
+            "hdmgxrmp":  # K13 jtmspro BLE lock (experimental)
+            [
+                TuyaBLESelectMapping(
+                    dp_id=31,
+                    description=SelectEntityDescription(
+                        key="beep_volume",
+                        # Cloud range for this product is mute/normal only.
+                        options=[
+                            "mute",
+                            "normal",
+                        ],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
         }
     ),    
     "szjqr": TuyaBLECategorySelectMapping(
@@ -319,6 +334,8 @@ class TuyaBLESelect(TuyaBLEEntity, SelectEntity):
     def available(self) -> bool:
         """Return if entity is available."""
         if self._device.product_id == "hc7n0urm" and self._mapping.dp_id in (31, 48):
+            return True
+        if self._device.product_id == "hdmgxrmp" and self._mapping.dp_id == 31:
             return True
         return super().available
 

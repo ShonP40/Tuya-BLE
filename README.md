@@ -123,9 +123,9 @@
     </tr>
     <tr>
       <td>Smart Locks<br>(jtmspro)</td>
-      <td>Raykube A1 Ultra / A1 Pro Max</td>
-      <td>'rlyxv7pe', 'hc7n0urm'</td>
-      <td>Allows lock/unlock control and status monitoring.</td>
+      <td>Raykube A1 Ultra / A1 Pro Max / K13</td>
+      <td>'rlyxv7pe', 'hc7n0urm', 'hdmgxrmp'</td>
+      <td>Allows lock/unlock control and status monitoring. K13 (<code>hdmgxrmp</code>) is experimental.</td>
     </tr>
     <tr>
       <td>Climate<br>(wk)</td>

@@ -97,6 +97,22 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     ),
                 ),
             ],
+            "hdmgxrmp":  # K13 jtmspro BLE lock (experimental)
+            [
+                TuyaBLELockMapping(
+                    # Cloud DP map for this product does not expose classic DP6 unlock;
+                    # start with Gimdow-style motor/manual DPs. Unlock may need further work.
+                    dp_id_unlock=62,  # unlock_phone_remote (experimental)
+                    dp_id_lock=46,  # manual_lock
+                    dp_id=47,  # lock_motor_state
+                    dp_id_nop=54,  # synch_method keepalive candidate
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
         }
     ), 
 }
@@ -266,7 +282,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if self._device.product_id == "hc7n0urm":
+        if self._device.product_id in ("hc7n0urm", "hdmgxrmp"):
             # Battery locks sleep and may not keep an active BLE connection between
             # commands. Allow Home Assistant to call unlock; the command path will
             # establish a connection on demand.

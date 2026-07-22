@@ -205,6 +205,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="Raykube A1 Ultra",
             ),
+            "hdmgxrmp":  # K13 jtmspro BLE lock (experimental)
+            TuyaBLEProductInfo(
+                name="K13 Smart Lock",
+            ),
         },
     ),    
     "szjqr": TuyaBLECategoryInfo(

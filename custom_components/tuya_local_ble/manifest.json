@@ -15,8 +15,8 @@
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
   "requirements": ["pycryptodome==3.20.0"],
-  "documentation": "https://github.com/ShonP40/Tuya-BLE",
+  "documentation": "https://github.com/wolfe60629/Tuya-BLE",
   "iot_class": "local_push",
-  "version": "0.1",
-  "issue_tracker": "https://github.com/{{cookiecutter.github_user}}/{{cookiecutter.project_name}}/issues"
+  "version": "0.1.1-k13",
+  "issue_tracker": "https://github.com/wolfe60629/Tuya-BLE/issues"
 }
