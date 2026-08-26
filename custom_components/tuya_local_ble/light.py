@@ -51,22 +51,31 @@ class TuyaBLECategoryLightMapping:
     mapping: list[TuyaBLELightMapping] | None = None
 
 
-mapping: dict[str, TuyaBLECategoryLightMapping] = {
-    "light": TuyaBLECategoryLightMapping(
-        products={},  # populated by user via devices.json (per-product overrides)
-        mapping=[
-            TuyaBLELightMapping(
-                switch_dp=20,  # switch_led (mandatory for entity to load)
-                work_mode_dp=21,  # work_mode (optional, written if present)
-                bright_dp=22,  # bright_value (raw 10..1000)
-                temp_dp=23,  # temp_value (raw 0..1000; 0=cool 6500K, 1000=warm 2700K)
-                description=LightEntityDescription(
-                    key="light",
-                    translation_key="light",
-                ),
-            ),
-        ],
+# Shared mapping list for all common CCT light categories. The DP family
+# (modern: switch_led 20 / work_mode 21 / bright_value 22 / temp_value 23)
+# is identical across these categories — only the category key differs.
+_CCT_MAPPING_LIST: list[TuyaBLELightMapping] = [
+    TuyaBLELightMapping(
+        switch_dp=20,  # switch_led (mandatory for entity to load)
+        work_mode_dp=21,  # work_mode (optional, written if present)
+        bright_dp=22,  # bright_value (raw 10..1000)
+        temp_dp=23,  # temp_value (raw 0..1000; 0=cool 6500K, 1000=warm 2700K)
+        description=LightEntityDescription(
+            key="light",
+            translation_key="light",
+        ),
     ),
+]
+
+# Register under the common Tuya light category strings. The setup-time
+# log line surfaces the actual category so the user can add more keys if
+# their device uses an unlisted one.
+mapping: dict[str, TuyaBLECategoryLightMapping] = {
+    cat: TuyaBLECategoryLightMapping(
+        products={},  # populated by user via devices.json (per-product overrides)
+        mapping=_CCT_MAPPING_LIST,
+    )
+    for cat in ("dj", "dmd", "fwd", "yyd", "xdd")
 }
 
 
@@ -282,8 +291,9 @@ async def async_setup_entry(
         )
         return
 
-    # Surface the device category so the user can confirm the `light` key in
-    # devices.py matches their devices.json entry (REQ-LIGHT-002 fallback).
+    # Surface the device category so the user can confirm one of the
+    # registered category keys (dj/dmd/fwd/yyd/xdd) matches their
+    # devices.json entry (REQ-LIGHT-002 fallback).
     _LOGGER.info(
         "TuyaBLE light setup: device_id=%s category=%s product_id=%s",
         device.device_id,

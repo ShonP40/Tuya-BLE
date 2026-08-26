@@ -316,8 +316,28 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
         },
     ),
-    "light": TuyaBLECategoryInfo(
-        info=TuyaBLEProductInfo(name="CCT Light"),  # fallback for unknown product_ids
+    # CCT light entry, registered under the common Tuya light category
+    # strings. The setup-time log line in light.py surfaces the actual
+    # category so the user can add more keys if their device uses an
+    # unlisted one.
+    "dj": TuyaBLECategoryInfo(
+        info=TuyaBLEProductInfo(name="CCT Light"),
+        products={},
+    ),
+    "dmd": TuyaBLECategoryInfo(
+        info=TuyaBLEProductInfo(name="CCT Light"),
+        products={},
+    ),
+    "fwd": TuyaBLECategoryInfo(
+        info=TuyaBLEProductInfo(name="CCT Light"),
+        products={},
+    ),
+    "yyd": TuyaBLECategoryInfo(
+        info=TuyaBLEProductInfo(name="CCT Light"),
+        products={},
+    ),
+    "xdd": TuyaBLECategoryInfo(
+        info=TuyaBLEProductInfo(name="CCT Light"),
         products={},
     ),
 }
