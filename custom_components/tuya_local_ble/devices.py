@@ -316,6 +316,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             ),
         },
     ),
+    "light": TuyaBLECategoryInfo(
+        info=TuyaBLEProductInfo(name="CCT Light"),  # fallback for unknown product_ids
+        products={},
+    ),
 }
 
 
