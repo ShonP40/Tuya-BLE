@@ -218,6 +218,11 @@
           "name": "Lock Control"
         }
       },
+      "light": {
+        "light": {
+          "name": "Light"
+        }
+      },
       "text": {
         "program": {
           "name": "Program: position[/time];..."
