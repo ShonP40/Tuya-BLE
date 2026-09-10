@@ -828,10 +828,11 @@ class TuyaBLEDevice:
                 packet += pack(">B", packet_protocol_version << 4)
 
             chunk_mtu = GATT_MTU
-            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and (
-                self.product_id in ("hc7n0urm", "ikphogdj") or self._uses_fd50_channel
+            if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO and self.product_id != "ikphogdj" and (
+                self.product_id in ("hc7n0urm") or self._uses_fd50_channel
             ):
                 # TuyaOS FD50 locks use MTU exchange and expect DEVICE_INFO in one write.
+                # Real HCI capture of the official app shows ikphogdj uses standard 20-byte MTU chunking (two writes) 
                 chunk_mtu = 244
             data_part = encrypted[
                 pos:pos + chunk_mtu - len(packet)  # fmt: skip
