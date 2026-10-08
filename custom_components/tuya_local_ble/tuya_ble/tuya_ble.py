@@ -1139,17 +1139,128 @@ class TuyaBLEDevice:
 
         self._fire_callbacks(datapoints)
 
+    @staticmethod
+    def _decode_fd50_v4_report(
+        data: bytes,
+    ) -> list[tuple[int, TuyaBLEDataPointType, bytes | bool | int | str]] | None:
+        """Strictly decode a device->host V4 report from a TuyaOS FD50 lock.
+
+        Layout, verified on live hc7n0urm frames (status snapshots,
+        connect-time reports, command echoes and lock-state pushes):
+
+            00000000 | seq:1 | flags:2 | { dp_id:1 dp_type:1 len:2 value:len }*
+
+        `seq` increments per frame; `flags` is 0000 for single reports and
+        0100 for the response to FUN_SENDER_DEVICE_STATUS. `dp_type` is the
+        standard Tuya datapoint type.
+
+        Returns None unless the whole frame is consumed exactly, so frames in
+        any other layout fall through to the heuristic parser unchanged.
+        """
+        if len(data) < 11 or data[:4] != b"\x00\x00\x00\x00":
+            return None
+
+        result: list[tuple[int, TuyaBLEDataPointType, bytes | bool | int | str]] = []
+        pos = 7
+        while pos < len(data):
+            if pos + 4 > len(data):
+                return None
+            dp_id = data[pos]
+            try:
+                dp_type = TuyaBLEDataPointType(data[pos + 1])
+            except ValueError:
+                return None
+            data_len = int.from_bytes(data[pos + 2:pos + 4], "big")
+            next_pos = pos + 4 + data_len
+            if next_pos > len(data):
+                return None
+            raw_value = data[pos + 4:next_pos]
+
+            match dp_type:
+                case TuyaBLEDataPointType.DT_RAW | TuyaBLEDataPointType.DT_BITMAP:
+                    value = raw_value
+                case TuyaBLEDataPointType.DT_BOOL:
+                    value = int.from_bytes(raw_value, "big") != 0
+                case TuyaBLEDataPointType.DT_VALUE | TuyaBLEDataPointType.DT_ENUM:
+                    value = int.from_bytes(raw_value, "big", signed=True)
+                case TuyaBLEDataPointType.DT_STRING:
+                    value = raw_value.decode(errors="replace")
+
+            # DP 9/31/48 are exposed as enum entities. Echoes after V4 writes
+            # may carry them with a raw type byte (e.g. `1f 00 0001 03`), which
+            # the previous parser already surfaced as DT_ENUM; keep doing so.
+            if (
+                dp_id in (9, 31, 48)
+                and dp_type == TuyaBLEDataPointType.DT_RAW
+                and 1 <= data_len <= 4
+            ):
+                dp_type = TuyaBLEDataPointType.DT_ENUM
+                value = int.from_bytes(raw_value, "big")
+
+            result.append((dp_id, dp_type, value))
+            pos = next_pos
+
+        return result
+
+    def _parse_fd50_v4_report(self, data: bytes) -> bool:
+        """Apply a strictly decoded FD50 V4 report. Returns False if not decodable."""
+        decoded = self._decode_fd50_v4_report(data)
+        if decoded is None:
+            return False
+
+        timestamp = time.time()
+        flags = int.from_bytes(data[5:7], "big")
+        datapoints: list[TuyaBLEDataPoint] = []
+        for dp_id, dp_type, value in decoded:
+            if dp_id == 71:
+                # DP71 carries the remote-unlock check code and key (the same
+                # bytes as the cloud `ble_unlock_check` status) - never log them.
+                shown = "<%d bytes redacted>" % len(value)
+            else:
+                shown = value
+            _LOGGER.debug(
+                "%s: Received FD50 V4 report, seq: 0x%02x, flags: 0x%04x, "
+                "id: %s, type: %s, value: %s",
+                self.address,
+                data[4],
+                flags,
+                dp_id,
+                dp_type.name,
+                shown,
+            )
+            self._datapoints._update_from_device(
+                dp_id, timestamp, flags, dp_type, value
+            )
+            datapoints.append(self._datapoints[dp_id])
+
+            if dp_id == 47 and dp_type == TuyaBLEDataPointType.DT_BOOL:
+                # DP47 lock_motor_state: false = locked, true = unlocked
+                # (Tuya BLE lock DP reference; confirmed on hc7n0urm). Mirror
+                # it to the synthetic DP118 the lock entity reads its state from.
+                self._datapoints._update_from_device(
+                    118,
+                    timestamp,
+                    flags,
+                    TuyaBLEDataPointType.DT_ENUM,
+                    1 if value else 0,
+                )
+                datapoints.append(self._datapoints[118])
+
+        self._fire_callbacks(datapoints)
+        return True
+
     def _parse_datapoints_v4(self, data: bytes) -> None:
         """Parse Tuya BLE V4 datapoint/event payloads.
 
         Most devices are still parsed with the legacy V3-like layout below.
-        Raykube/TuyaOS FD50 locks use the command-style V4 body handled by
-        `_parse_raykube_datapoints_v4`: header:4, op:1, dp_id:1, len:3,
-        value:len.  Only safe configuration/status datapoints are surfaced for
-        that lock; ambiguous lock-state events are intentionally ignored.
+        Raykube/TuyaOS FD50 locks first go through the strict report decoder
+        (`_parse_fd50_v4_report`), which handles full status snapshots and
+        DP47 lock-state pushes. Frames it cannot consume exactly fall back to
+        the heuristic `_parse_raykube_datapoints_v4`.
         """
         if self.product_id in ("hc7n0urm", "y2yaegze"):
-            self._parse_raykube_datapoints_v4(data)
+            if not self._parse_fd50_v4_report(data):
+                self._parse_raykube_datapoints_v4(data)
             return
 
         if self.product_id == "ikphogdj":
@@ -1291,6 +1402,10 @@ class TuyaBLEDevice:
         while len(data) - pos >= 5:
             # Generic V4 typed status/event frame seen from manual actions:
             #   <id> <flags:3> <dp_type> <len:2> <value:len>
+            # Note: under the report layout decoded by _decode_fd50_v4_report
+            # this is `<seq> <flags:2> <dp_id=0x2f>`, i.e. a single DP47 report.
+            # Such frames are normally consumed by that decoder; this branch
+            # is kept as a fallback.
             # For Raykube hc7n0urm, flags=0x00002f with DT_BOOL is the only
             # passive physical lock-state event observed so far:
             #   true  -> open/unlocked
@@ -1765,6 +1880,8 @@ class TuyaBLEDevice:
                 # Raykube A1 Ultra / TuyaOS FD50 remote unlock command captured
                 # from the official app. It is built from the per-device
                 # `ble_unlock_check` raw status value reported by Tuya Cloud.
+                # DP6 is only the integration-side trigger: on the wire this is
+                # a DP71 raw write (see _build_raykube_unlock_v4_data).
                 raykube_unlock_v4_data = self._build_raykube_unlock_v4_data()
                 await self._send_packet(
                     TuyaBLECode.FUN_SENDER_DPS_V4, raykube_unlock_v4_data, True
@@ -1832,6 +1949,11 @@ class TuyaBLEDevice:
 
         The V4 command payload sent by the official app is:
         00000000 01 47 000013 ffff 0001 <8 ASCII digits> 01 <4 bytes> 00 01
+
+        In Tuya datapoint terms this is a write of DP71 (0x47, raw, 19 bytes).
+        After the unlock the lock reports DP71 back with a value that is
+        byte-identical to the cloud `ble_unlock_check` status, i.e. that cloud
+        status is the mirror of DP71.
         """
         if not self.ble_unlock_check:
             raise TuyaBLEDeviceError(
