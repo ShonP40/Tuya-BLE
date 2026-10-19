@@ -210,6 +210,23 @@ class TuyaBLEDataPoints:
 
 global_connect_lock = asyncio.Lock()
 
+# Battery locks that sleep most of the time and only advertise briefly when
+# woken. Connecting to them on a blind retry loop almost never lines up with
+# the short window in which they accept a connection, so for these products
+# each connect attempt waits for a fresh advertisement first.
+ADVERTISEMENT_GATED_PRODUCTS = ("j3n6jw2y",)
+# An advertisement younger than this is treated as "device awake right now".
+ADVERTISEMENT_FRESH_SECONDS = 5.0
+# How long one connect attempt waits for the device to advertise.
+ADVERTISEMENT_WAIT_SECONDS = 120.0
+# The lock drops an idle BLE link after ~3 min. A link that has been silent
+# longer than this is treated as possibly dead (e.g. a proxy lost it without
+# telling Home Assistant) and is replaced before sending a command.
+ON_DEMAND_STALE_SECONDS = 120.0
+# How long to wait for the lock to answer a datapoint write before assuming
+# the link is dead and retrying once on a fresh connection.
+ON_DEMAND_REPLY_SECONDS = 6.0
+
 
 class TuyaBLEDevice:
     def __init__(
@@ -263,12 +280,71 @@ class TuyaBLEDevice:
 
         self._datapoints = TuyaBLEDataPoints(self)
 
+        # Monotonic time of the last advertisement seen, and an event set on
+        # every new one (used to time connects to sleepy devices).
+        self._last_advertisement_time = 0.0
+        self._advertisement_event = asyncio.Event()
+        # Monotonic time of the last packet / datapoint report received.
+        self._last_rx_time = 0.0
+        self._last_dp_time = 0.0
+        # Optional: returns the monotonic time Home Assistant last heard this
+        # device. HA skips advertisement callbacks when only the RSSI changed,
+        # so the callback alone can miss a repeated (identical) advertisement.
+        self._last_seen_provider: Callable[[], float | None] | None = None
+
+    def set_last_seen_provider(
+        self, provider: Callable[[], float | None] | None
+    ) -> None:
+        """Set a callable returning when the device was last heard."""
+        self._last_seen_provider = provider
+
+    def _seconds_since_advertisement(self) -> float:
+        last = self._last_advertisement_time
+        if self._last_seen_provider is not None:
+            try:
+                seen = self._last_seen_provider()
+            except Exception:  # pragma: no cover - defensive
+                seen = None
+            if seen is not None and seen > last:
+                last = seen
+        return time.monotonic() - last
+
     def set_ble_device_and_advertisement_data(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
     ) -> None:
         """Set the ble device."""
         self._ble_device = ble_device
         self._advertisement_data = advertisement_data
+        self._last_advertisement_time = time.monotonic()
+        self._advertisement_event.set()
+
+    @property
+    def is_advertisement_gated(self) -> bool:
+        """Return true if connects must wait for a fresh advertisement."""
+        return self.product_id in ADVERTISEMENT_GATED_PRODUCTS
+
+    async def wait_for_advertisement(self, timeout: float) -> bool:
+        """Wait until the device has just advertised (i.e. is awake).
+
+        Returns immediately if an advertisement arrived within the last
+        ADVERTISEMENT_FRESH_SECONDS, otherwise waits up to `timeout` seconds
+        for the next one. Returns False on timeout.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            if self._seconds_since_advertisement() <= ADVERTISEMENT_FRESH_SECONDS:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            self._advertisement_event.clear()
+            try:
+                # Wake on a callback, or re-check HA's history twice a second.
+                await asyncio.wait_for(
+                    self._advertisement_event.wait(), min(0.5, remaining)
+                )
+            except asyncio.TimeoutError:
+                pass
 
     async def initialize(self) -> None:
         _LOGGER.debug("%s: Initializing", self.address)
@@ -460,6 +536,8 @@ class TuyaBLEDevice:
 
     def _fire_callbacks(self, datapoints: list[TuyaBLEDataPoint]) -> None:
         """Fire the callbacks."""
+        if datapoints:
+            self._last_dp_time = time.monotonic()
         for callback in self._callbacks:
             callback(datapoints)
 
@@ -519,6 +597,15 @@ class TuyaBLEDevice:
             self.address,
             self.rssi,
         )
+        if was_paired and self.is_advertisement_gated:
+            # On-demand device: the lock hangs up idle links by design.
+            # Reconnecting would loop forever, drain its battery, hold a
+            # proxy slot and lock out the phone app. Connect on next use.
+            _LOGGER.debug(
+                "%s: Disconnected (on-demand device, not reconnecting)",
+                self.address,
+            )
+            return
         if was_paired:
             _LOGGER.debug(
                 "%s: Scheduling reconnect; RSSI: %s",
@@ -526,6 +613,31 @@ class TuyaBLEDevice:
                 self.rssi,
             )
             asyncio.create_task(self._reconnect())
+
+    async def soft_disconnect(self) -> None:
+        """Drop the current link without disabling future connects
+        (unlike stop(), which sets _expected_disconnect for good)."""
+        client = self._client
+        self._client = None
+        self._is_paired = False
+        self._clean_input()
+        async with self._seq_num_lock:
+            self._current_seq_num = 1
+        if client is not None:
+            try:
+                await asyncio.wait_for(client.disconnect(), 10)
+            except Exception:  # noqa: BLE001 - link may already be dead
+                _LOGGER.debug("%s: soft disconnect error", self.address,
+                              exc_info=True)
+
+    async def _wait_for_dp_after(self, since: float, timeout: float) -> bool:
+        """Wait until the device reports any datapoint after `since`."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._last_dp_time > since:
+                return True
+            await asyncio.sleep(0.1)
+        return self._last_dp_time > since
 
     def _disconnect(self) -> None:
         """Disconnect from device."""
@@ -571,6 +683,18 @@ class TuyaBLEDevice:
         global global_connect_lock
         if self._expected_disconnect:
             return
+        if (
+            self.is_advertisement_gated
+            and self._client is not None
+            and not self._connect_lock.locked()
+            and time.monotonic() - self._last_rx_time > ON_DEMAND_STALE_SECONDS
+        ):
+            _LOGGER.debug(
+                "%s: Link silent for %.0fs; replacing it before use",
+                self.address,
+                time.monotonic() - self._last_rx_time,
+            )
+            await self.soft_disconnect()
         if self._connect_lock.locked():
             _LOGGER.debug(
                 "%s: Connection already in progress,"
@@ -585,7 +709,9 @@ class TuyaBLEDevice:
             await asyncio.sleep(0.01)
             if self._client and self._client.is_connected and self._is_paired:
                 return
-            attempts_count = 100
+            # Each gated attempt can wait ADVERTISEMENT_WAIT_SECONDS, so a
+            # handful of attempts already covers several minutes.
+            attempts_count = 4 if self.is_advertisement_gated else 100
             while attempts_count > 0:
                 attempts_count -= 1
                 if attempts_count == 0:
@@ -595,6 +721,24 @@ class TuyaBLEDevice:
                         self.rssi,
                     )
                     raise BleakNotFoundError()
+                if self.is_advertisement_gated:
+                    # Do not hold global_connect_lock while waiting, so other
+                    # devices can still connect in the meantime.
+                    _LOGGER.debug(
+                        "%s: Waiting up to %ss for the device to advertise",
+                        self.address,
+                        ADVERTISEMENT_WAIT_SECONDS,
+                    )
+                    if not await self.wait_for_advertisement(
+                        ADVERTISEMENT_WAIT_SECONDS
+                    ):
+                        _LOGGER.debug(
+                            "%s: No advertisement within %ss; device asleep"
+                            " or out of range",
+                            self.address,
+                            ADVERTISEMENT_WAIT_SECONDS,
+                        )
+                        continue
                 try:
                     async with global_connect_lock:
                         _LOGGER.debug(
@@ -854,7 +998,7 @@ class TuyaBLEDevice:
         the peripheral's own idle-disconnect timer from firing.
 
         General-purpose utility, not product-specific. Currently only
-        called from ikphogdj (HL Knob-2) code paths.
+        called from ikphogdj (HL Knob-2) and j3n6jw2y code paths.
         """
         elapsed = 0
         while elapsed < seconds:
@@ -863,6 +1007,11 @@ class TuyaBLEDevice:
             elapsed += wait
             if self._expected_disconnect or self._client is None or not self._client.is_connected:
                 return
+        if self.is_advertisement_gated and not self._connect_lock.locked():
+            # Free the proxy slot and the lock's single connection (so the
+            # phone app works) instead of waiting for the lock to hang up.
+            _LOGGER.debug("%s: Done lingering; disconnecting", self.address)
+            await self.soft_disconnect()
 
     async def _get_seq_num(self) -> int:
         async with self._seq_num_lock:
@@ -1263,7 +1412,9 @@ class TuyaBLEDevice:
                 self._parse_raykube_datapoints_v4(data)
             return
 
-        if self.product_id == "ikphogdj":
+        if self.product_id in ("ikphogdj", "j3n6jw2y"):
+            # j3n6jw2y: same jtmspro DP schema; assumed to use the same
+            # command-style V4 report framing as ikphogdj (unconfirmed).
             self._parse_ikphogdj_datapoints_v4(data)
             return
 
@@ -1814,6 +1965,7 @@ class TuyaBLEDevice:
     def _notification_handler(self, _sender: int, data: bytearray) -> None:
         """Handle notification responses."""
         _LOGGER.debug("%s: Packet received: %s", self.address, data.hex())
+        self._last_rx_time = time.monotonic()
 
         pos: int = 0
         packet_num: int
@@ -1937,6 +2089,23 @@ class TuyaBLEDevice:
                 )
             return
 
+        if self.product_id == "j3n6jw2y" and self._protocol_version != 3:
+            if 78 in datapoint_ids:
+                # special_control (dp 78), used as passage mode on this lock.
+                # Bool V4 write, same framing as ikphogdj automatic_lock
+                # (dp 33). Unconfirmed by HCI capture for this product.
+                j3n6jw2y_v4_data = self._build_ikphogdj_v4_bool_data(78)
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, j3n6jw2y_v4_data, True
+                )
+            else:
+                _LOGGER.debug(
+                    "%s: Skipping unsupported j3n6jw2y V4 datapoint write: %s",
+                    self.address,
+                    datapoint_ids,
+                )
+            return
+
         #await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data)
         await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data, False)
 
@@ -2040,6 +2209,28 @@ class TuyaBLEDevice:
         ):
             await self._send_datapoints_v3(datapoint_ids)
             return
+
+        if self.is_advertisement_gated:
+            # On-demand lock: connect if needed, send, and require the lock
+            # to answer. If it stays silent the link was dead (seen when a
+            # proxy dropped it without notice), so retry once on a fresh one.
+            for attempt in (1, 2):
+                # Connect first so handshake traffic is not mistaken for
+                # the lock's answer to the write.
+                await self._ensure_connected()
+                sent_at = time.monotonic()
+                await self._send_datapoints_v3(datapoint_ids)
+                if await self._wait_for_dp_after(sent_at, ON_DEMAND_REPLY_SECONDS):
+                    return
+                _LOGGER.warning(
+                    "%s: No reply to datapoint write %s (attempt %s); "
+                    "reconnecting",
+                    self.address,
+                    datapoint_ids,
+                    attempt,
+                )
+                await self.soft_disconnect()
+            raise TuyaBLEDeviceError(0)
 
         if self._protocol_version == 3:
             await self._send_datapoints_v3(datapoint_ids)

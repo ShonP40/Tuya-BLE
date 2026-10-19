@@ -262,6 +262,13 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                     ],
                 ),
             ],
+            "j3n6jw2y":  # model e1n2uw7o
+            [
+                TuyaBLEBatteryMapping(
+                    # dp 8 (residual_electricity), 0-100 %.
+                    dp_id=8,
+                ),
+            ],
             "ikphogdj":  # HL Knob-2, TuyaOS FD50 lock
             [
                 TuyaBLEBatteryMapping(
