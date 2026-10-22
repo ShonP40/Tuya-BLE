@@ -135,8 +135,8 @@
     </tr>
     <tr>
       <td>Smart Locks<br>(jtmspro)</td>
-      <td>Raykube A1 Ultra / A1 Pro Max / CTL20H SmartLock / HL Knob-2 / MYPIN HS0358 / j3n6jw2y Smart Lock</td>
-      <td>'rlyxv7pe', 'hc7n0urm', 'y2yaegze', 'ikphogdj', 'c6hfl8bt', 'j3n6jw2y'</td>
+      <td>Raykube A1 Ultra / A1 Pro Max / CTL20H SmartLock / HL Knob-2 / MYPIN HS0358 / j3n6jw2y Smart Lock / EC-LOCK (BAFUWEIY)</td>
+      <td>'rlyxv7pe', 'hc7n0urm', 'y2yaegze', 'ikphogdj', 'c6hfl8bt', 'j3n6jw2y', 'vsf3sqif'</td>
       <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>

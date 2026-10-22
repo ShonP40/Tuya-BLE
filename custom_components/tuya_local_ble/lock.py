@@ -173,6 +173,23 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     ),
                 ),
             ],
+            "vsf3sqif":  # EC-LOCK (BAFUWEIY fingerprint lock), jtmspro, same DP schema as c6hfl8bt
+            [
+                TuyaBLELockMapping(
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # Tuya cloud thing model: dp 47 = lock_motor_state (ro bool).
+                    # Verified on hardware: remote lock and unlock work.
+                    dp_id=47,
+                    value_means_locked=False,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
             "c6hfl8bt":  # MYPIN HS0358 cabinet lock, TuyaOS FD50 transport
             [
                 TuyaBLELockMapping(
