@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+import asyncio
 import logging
 from typing import Callable
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ from homeassistant.components.lock import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -30,6 +32,11 @@ from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 _LOGGER = logging.getLogger(__name__)
 
 TuyaBLELockIsAvailable = Callable[["TuyaBLELock", TuyaBLEProductInfo], bool] | None
+
+# Battery locks that sleep between commands: report state optimistically after
+# a command, linger on the connection briefly, and stay "available" so HA lets
+# the command path connect on demand.
+OPTIMISTIC_PRODUCTS = ("ikphogdj", "j3n6jw2y")
 
 from typing import Any
 
@@ -46,6 +53,10 @@ class TuyaBLELockMapping:
     dp_type: TuyaBLEDataPointType | None = None
     is_available: TuyaBLELockIsAvailable = None
     value_means_locked: bool = False
+    # Value written to the lock/unlock DP. Most locks take True for both
+    # (momentary trigger); toggle-style DPs (e.g. passage mode) differ.
+    dp_value_lock: bool = True
+    dp_value_unlock: bool = True
 
 @dataclass
 class TuyaBLELockMapping(TuyaBLELockMapping):
@@ -126,6 +137,34 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     # after unlock, dp47=0 after lock/auto-lock.
                     dp_id=47,
                     value_means_locked=False,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
+            "j3n6jw2y":  # model e1n2uw7o, jtmspro schema without manual_lock
+            [
+                TuyaBLELockMapping(
+                    # dp 78 = special_control (rw bool). Generic Tuya
+                    # "special control" DP whose label the OEM can rename;
+                    # on this lock it is used as passage mode (per owner).
+                    # Unlock = passage mode ON, lock = passage mode OFF.
+                    dp_id_unlock=78,
+                    dp_value_unlock=True,
+                    dp_id_lock=78,
+                    dp_value_lock=False,
+                    # State comes from dp 47 (lock_motor_state), not dp 78:
+                    # the lock only echoes dp 78 right after a command and
+                    # leaves it out of the status snapshot it sends on every
+                    # connect, while dp 47 is always included. Verified on
+                    # the device: passage on -> dp47 True, off -> dp47 False.
+                    dp_id=47,
+                    value_means_locked=False,
+                    # dp 52 = temporary_password_delete; only used when
+                    # keep_connect is True (it is not here).
                     dp_id_nop=52,
                     keep_connect=False,
                     keep_connect_timer=60,
@@ -270,20 +309,57 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
         await self._set_lock_state(LockState.UNLOCKED)
 
     async def _set_lock_state(self, state: str) -> None:
-        self._target_state = state
-        self._update_attrs()
-        self.async_write_ha_state()
-
-        if self._target_state == LockState.UNLOCKED:
+        if state == LockState.UNLOCKED:
             dp_id = self._mapping.dp_id_unlock
         else:
             dp_id = self._mapping.dp_id_lock
+
+        if not dp_id:
+            # Product has no remote command DP for this action
+            # (dp_id 0 in the mapping).
+            raise HomeAssistantError(
+                f"This lock does not support remote "
+                f"{'lock' if state == LockState.LOCKED else 'unlock'}"
+            )
+
+        self._target_state = state
+        self._update_attrs()
+        self.async_write_ha_state()
 
         datapoint = self._device.datapoints.get_or_create(
             dp_id,
             TuyaBLEDataPointType.DT_BOOL,
             False,
         )
+
+        if self._device.product_id in OPTIMISTIC_PRODUCTS:
+            value = (
+                self._mapping.dp_value_unlock
+                if self._target_state == LockState.UNLOCKED
+                else self._mapping.dp_value_lock
+            )
+            if datapoint.type in (TuyaBLEDataPointType.DT_RAW, TuyaBLEDataPointType.DT_BITMAP):
+                # A raw DP would turn set_value(True) into bytes(True) ==
+                # b"\x00". Send an explicit single byte instead.
+                await datapoint.set_value(b"\x01" if value else b"\x00")
+            else:
+                await datapoint.set_value(value)
+            # Sync the real state datapoint locally and linger briefly
+            # (confirmed necessary for ikphogdj via HCI capture).
+            if self._target_state == LockState.UNLOCKED:
+                state_value = False if self._mapping.value_means_locked else True
+            else:
+                state_value = True if self._mapping.value_means_locked else False
+            self._device.datapoints._update_from_device(
+                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
+            )
+            self._current_state = self._target_state
+            self._commanded = False
+            self._isjammed = False
+            self._update_attrs()
+            self.async_write_ha_state()
+            self._hass.create_task(self._after_command())
+            return
 
         if self._device.product_id in ("hc7n0urm", "y2yaegze") and self._target_state == LockState.UNLOCKED:
             await datapoint.set_value(True)
@@ -303,43 +379,22 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             self.async_write_ha_state()
             return
 
-        if self._device.product_id == "ikphogdj" and self._target_state == LockState.UNLOCKED:
-            # Similar logic for ikphogdj. Also syncs the real
-            # state datapoint locally (not just cosmetic _current_state) and
-            # lingers briefly - fixes confirmed necessary for ikphogdj via
-            # HCI capture
-            await datapoint.set_value(True)
-            state_value = False if self._mapping.value_means_locked else True
-            self._device.datapoints._update_from_device(
-                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
-            )
-            self._current_state = LockState.UNLOCKED
-            self._commanded = False
-            self._isjammed = False
-            self._update_attrs()
-            self.async_write_ha_state()
-            self._hass.create_task(self._device.linger_connected(30))
-            return
-
-        if self._device.product_id == "ikphogdj" and self._target_state == LockState.LOCKED:
-            await datapoint.set_value(True)
-            state_value = True if self._mapping.value_means_locked else False
-            self._device.datapoints._update_from_device(
-                self._mapping.dp_id, time.time(), 0, TuyaBLEDataPointType.DT_BOOL, state_value
-            )
-            self._current_state = LockState.LOCKED
-            self._commanded = False
-            self._isjammed = False
-            self._update_attrs()
-            self.async_write_ha_state()
-            self._hass.create_task(self._device.linger_connected(30))
-            return
-
         #Gimdow need true to activate lock/unlock commands
         self._hass.create_task(datapoint.set_value(True))
         self._commanded = True
         self._commanded_timer = datetime.now()
 
+
+    async def _after_command(self) -> None:
+        """While still connected after a command, ask the lock for a full
+        status report (battery etc. are only sent in that report, not in
+        the command echo), then linger briefly and disconnect."""
+        try:
+            await asyncio.wait_for(self._device.update(), 15)
+        except Exception:  # noqa: BLE001 - best effort
+            _LOGGER.debug("%s: post-command status refresh failed",
+                          self._device.address, exc_info=True)
+        await self._device.linger_connected(30)
 
     def update_device_state(self):
         datapoint = self._device.datapoints[self._mapping.dp_id]
@@ -372,7 +427,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             # commands. Allow Home Assistant to call unlock; the command path will
             # establish a connection on demand.
             return True
-        if self._device.product_id == "ikphogdj":
+        if self._device.product_id in OPTIMISTIC_PRODUCTS:
             # Same reasoning as hc7n0urm above
             return True
         result = super().available

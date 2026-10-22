@@ -1,6 +1,7 @@
 """The Tuya BLE integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -36,7 +37,14 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tuya BLE from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
-    ble_device = bluetooth.async_ble_device_from_address(
+    # Seed the device with the last connectable advertisement Home Assistant
+    # has seen, so RSSI / protocol version are known before the first connect.
+    last_service_info = bluetooth.async_last_service_info(
+        hass, address.upper(), True
+    )
+    ble_device = (
+        last_service_info.device if last_service_info else None
+    ) or bluetooth.async_ble_device_from_address(
         hass, address.upper(), True
     ) or await get_device(address)
     if not ble_device:
@@ -44,8 +52,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             f"Could not find Tuya BLE device with address {address}"
         )
     manager = HASSTuyaBLEDeviceManager(hass, entry.options.copy())
-    device = TuyaBLEDevice(manager, ble_device)
+    device = TuyaBLEDevice(
+        manager,
+        ble_device,
+        last_service_info.advertisement if last_service_info else None,
+    )
     await device.initialize()
+
+    def _last_seen() -> float | None:
+        info = bluetooth.async_last_service_info(hass, address.upper(), True)
+        return info.time if info else None
+
+    device.set_last_seen_provider(_last_seen)
     product_info = get_device_product_info(device)
 
     coordinator = TuyaBLECoordinator(hass, device)
@@ -60,9 +78,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     '''
     #hass.async_create_task(device.update())
 
-    await device.update()
-    
     last_raykube_advertisement_update = 0.0
+    # Sleepy (advertisement-gated) devices: True once a status update has
+    # succeeded, so later advertisements do not trigger needless reconnects.
+    gated_status_received = False
+    gated_update_task = None
 
     async def _async_update_raykube_from_advertisement() -> None:
         """Best-effort Raykube state refresh after a BLE advertisement."""
@@ -81,16 +101,48 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 exc_info=True,
             )
 
+    async def _async_gated_update() -> None:
+        """Status refresh for advertisement-gated (sleepy) devices.
+
+        Retries on a timer until it succeeds: Home Assistant does not call
+        the advertisement callback for repeated identical advertisements,
+        so waiting for the next callback can mean waiting forever.
+        """
+        nonlocal gated_status_received
+        delay = 60
+        while not gated_status_received:
+            try:
+                await device.update()
+                gated_status_received = True
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug(
+                    "%s: Status update failed; retrying in %ss",
+                    address,
+                    delay,
+                    exc_info=True,
+                )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 1800)
+
     @callback
     def _async_update_ble(
         service_info: bluetooth.BluetoothServiceInfoBleak,
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Update from a ble callback."""
-        nonlocal last_raykube_advertisement_update
+        nonlocal last_raykube_advertisement_update, gated_update_task
         device.set_ble_device_and_advertisement_data(
             service_info.device, service_info.advertisement
         )
+        if device.is_advertisement_gated and not gated_status_received:
+            # The device is awake right now; fetch its status while we can.
+            if gated_update_task is None or gated_update_task.done():
+                gated_update_task = entry.async_create_background_task(
+                    hass, _async_gated_update(), f"{DOMAIN}_status_{address}"
+                )
         if device.product_id in ("hc7n0urm", "y2yaegze"):
             # Raykube locks do not push manual/keypad state changes while the
             # integration is disconnected. A fresh advertisement after a
@@ -109,6 +161,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             bluetooth.BluetoothScanningMode.ACTIVE,
         )
     )
+
+    if device.is_advertisement_gated:
+        # Do not block setup ("Initializing") waiting for a sleepy lock to
+        # wake up. Entities are created now; status arrives on the next
+        # advertisement (see _async_update_ble).
+        # Background task: Home Assistant does not wait for these during
+        # startup. A plain hass.async_create_task here held up HA startup for
+        # minutes whenever the lock was out of reach.
+        gated_update_task = entry.async_create_background_task(
+            hass, _async_gated_update(), f"{DOMAIN}_status_{address}"
+        )
+
+        @callback
+        def _cancel_gated_update() -> None:
+            if gated_update_task is not None and not gated_update_task.done():
+                gated_update_task.cancel()
+
+        entry.async_on_unload(_cancel_gated_update)
+    else:
+        await device.update()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = TuyaBLEData(
         entry.title,

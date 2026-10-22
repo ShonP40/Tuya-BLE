@@ -80,6 +80,12 @@ class TuyaBLEEntity(CoordinatorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
+        if self._device.is_advertisement_gated:
+            # On-demand devices (e.g. j3n6jw2y) are disconnected most of the
+            # time by design. Keep their entities available and showing the
+            # last value received instead of flipping to "unavailable" every
+            # time the BLE link is closed.
+            return True
         return self._coordinator.connected
 
     @callback
@@ -219,6 +225,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             "ikphogdj":  # HL Knob-2, TuyaOS FD50 transport
             TuyaBLEProductInfo(
                 name="HL Knob-2",
+            ),
+            "j3n6jw2y":  # model e1n2uw7o
+            TuyaBLEProductInfo(
+                name="Smart Lock",
             ),
         },
     ),    
