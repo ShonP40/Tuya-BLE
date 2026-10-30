@@ -208,6 +208,28 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     ),
                 ),
             ],
+            "nglqaett":  # HTMCKM5 / B5
+            [
+                TuyaBLELockMapping(
+                    # Integration-side trigger.
+                    # Actual FD50 V4 unlock command is DP71.
+                    dp_id_unlock=6,
+                    # B5 schema has no manual_lock (DP46).
+                    # Do not expose an unverified remote-lock command.
+                    dp_id_lock=0,
+                    # Verified on the actual B5:
+                    # False = locked, True = unlocked.
+                    dp_id=47,
+                    value_means_locked=False,
+                    # Required mapping fields; unused while keep_connect=False.
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
         }
     ), 
 }
@@ -439,7 +461,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if self._device.product_id in ("hc7n0urm", "y2yaegze"):
+        if self._device.product_id in ("hc7n0urm", "y2yaegze", "nglqaett"):
             # Battery locks sleep and may not keep an active BLE connection between
             # commands. Allow Home Assistant to call unlock; the command path will
             # establish a connection on demand.

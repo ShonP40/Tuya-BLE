@@ -1407,7 +1407,7 @@ class TuyaBLEDevice:
         DP47 lock-state pushes. Frames it cannot consume exactly fall back to
         the heuristic `_parse_raykube_datapoints_v4`.
         """
-        if self.product_id in ("hc7n0urm", "y2yaegze"):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett"):
             if not self._parse_fd50_v4_report(data):
                 self._parse_raykube_datapoints_v4(data)
             return
@@ -2027,7 +2027,7 @@ class TuyaBLEDevice:
             data += pack(">BBB", dp.id, int(dp.type.value), len(value))
             data += value
 
-        if self.product_id in ("hc7n0urm", "y2yaegze"):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett"):
             if 6 in datapoint_ids:
                 # Raykube A1 Ultra / TuyaOS FD50 remote unlock command captured
                 # from the official app. It is built from the per-device
@@ -2037,6 +2037,20 @@ class TuyaBLEDevice:
                 raykube_unlock_v4_data = self._build_raykube_unlock_v4_data()
                 await self._send_packet(
                     TuyaBLECode.FUN_SENDER_DPS_V4, raykube_unlock_v4_data, True
+                )
+            elif self.product_id == "nglqaett" and 33 in datapoint_ids:
+                # HTMCKM5 B5 automatic_lock (DP33).
+                b5_autolock_v4_data = self._build_ikphogdj_v4_bool_data(33)
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4, b5_autolock_v4_data, True
+                )
+            elif self.product_id == "nglqaett" and 36 in datapoint_ids:
+                # HTMCKM5 B5 auto_lock_time (DP36), DT_VALUE.
+                b5_auto_lock_time_v4_data = self._build_b5_v4_value_data(36)
+                await self._send_packet(
+                    TuyaBLECode.FUN_SENDER_DPS_V4,
+                    b5_auto_lock_time_v4_data,
+                    True,
                 )
             elif 46 in datapoint_ids:
                 # Candidate Raykube physical lock command (`manual_lock` / DP 46).
@@ -2113,7 +2127,7 @@ class TuyaBLEDevice:
         """Build the Raykube/TuyaOS FD50 V4 remote-unlock payload.
 
         `ble_unlock_check` is a base64 encoded raw Tuya status field. For the
-        verified lock it decodes to:
+        verified locks it decodes to:
         00 01 ff ff <8 ASCII digits> 01 <4 bytes> 00 00
 
         The V4 command payload sent by the official app is:
@@ -2127,7 +2141,7 @@ class TuyaBLEDevice:
         if not self.ble_unlock_check:
             raise TuyaBLEDeviceError(
                 "This TuyaOS FD50 lock (Raykube/hc7n0urm, ikphogdj, "
-                "c6hfl8bt) requires the device-specific ble_unlock_check "
+                "c6hfl8bt, nglqaett) requires the device-specific ble_unlock_check "
                 "value in tuya_local_ble/devices.json"
             )
 
@@ -2182,12 +2196,29 @@ class TuyaBLEDevice:
         """Build an ikphogdj V4 bool write (e.g. automatic_lock)."""
         return self._build_ikphogdj_v4_scalar_data(dp_id, dp_type=0x01)
 
+    def _build_b5_v4_value_data(self, dp_id: int) -> bytes:
+        """Build an HTMCKM5 B5 V4 integer/value write."""
+        dp = self._datapoints[dp_id]
+        value = dp._get_value()
+        if len(value) != 4:
+            raise TuyaBLEDataLengthError()
+        return (
+            b"\x00\x00\x00\x00\x01"
+            + bytes([dp_id, 0x02])
+            + len(value).to_bytes(2, "big")
+            + value
+        )
+
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
-        if self.product_id in ("hc7n0urm", "y2yaegze") and 6 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett") and 6 in datapoint_ids:
             # This battery lock may be disconnected after Home Assistant startup,
-            # so protocol_version can still be unknown here. The Raykube V4 path
+            # so protocol_version can still be unknown here. The FD50 V4 path
             # establishes BLE connection and performs DEVICE_INFO/PAIR on demand.
+            await self._send_datapoints_v3(datapoint_ids)
+            return
+        # B5 settings
+        if self.product_id == "nglqaett" and set(datapoint_ids).issubset({31, 33, 36}):
             await self._send_datapoints_v3(datapoint_ids)
             return
         if self.product_id in ("hc7n0urm", "y2yaegze") and 46 in datapoint_ids:

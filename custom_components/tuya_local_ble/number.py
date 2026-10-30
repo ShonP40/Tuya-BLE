@@ -445,6 +445,25 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
             ],
         },
     ),
+    "jtmspro": TuyaBLECategoryNumberMapping(
+        products={
+            "nglqaett": [  # HTMCKM5 B5
+                TuyaBLENumberMapping(
+                    dp_id=36,
+                    dp_type=TuyaBLEDataPointType.DT_VALUE,
+                    description=NumberEntityDescription(
+                        key="auto_lock_time",
+                        icon="mdi:timer-lock",
+                        native_min_value=1,
+                        native_max_value=6,
+                        native_step=1,
+                        native_unit_of_measurement=UnitOfTime.SECONDS,
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+        },
+    ),
 }
 
 
