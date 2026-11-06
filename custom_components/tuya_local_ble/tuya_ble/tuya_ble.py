@@ -765,7 +765,7 @@ class TuyaBLEDevice:
                         "%s: communication failed", self.address, exc_info=True
                     )
                     continue
-                except:
+                except Exception:
                     _LOGGER.debug("%s: unexpected error",
                                   self.address, exc_info=True)
                     continue
@@ -781,7 +781,7 @@ class TuyaBLEDevice:
                             self._notification_handler,
                             bluez={"use_start_notify": True},
                         )
-                    except:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
+                    except Exception:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
                         self._client = None
                         _LOGGER.error("%s: starting notifications failed",
                                       self.address, exc_info=True)
@@ -815,7 +815,7 @@ class TuyaBLEDevice:
                                 self.address,
                             )
                             continue
-                    except:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
+                    except Exception:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
                         self._client = None
                         _LOGGER.error("%s: Sending device info request failed",
                                       self.address, exc_info=True)
@@ -838,7 +838,7 @@ class TuyaBLEDevice:
                                 self.address,
                             )
                             continue
-                    except:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
+                    except Exception:  # [BLEAK_EXCEPTIONS, BleakNotFoundError]:
                         self._client = None
                         _LOGGER.error("%s: Sending pairing request failed",
                                       self.address, exc_info=True)
@@ -1092,22 +1092,26 @@ class TuyaBLEDevice:
                 seq_num,
                 code.name,
             )
-        packets: list[bytes] = self._build_packets(
-            seq_num, code, data, response_to)
-        await self._int_send_packet_while_connected(packets)
-        if future:
-            try:
-                await asyncio.wait_for(future, RESPONSE_WAIT_TIMEOUT)
-            except asyncio.TimeoutError:
-                _LOGGER.error(
-                    "%s: timeout receiving response, RSSI: %s",
-                    self.address,
-                    self.rssi,
-                )
-                result = False
-            self._input_expected_responses.pop(seq_num, None)
-
-        return result
+        try:
+            packets: list[bytes] = self._build_packets(
+                seq_num, code, data, response_to)
+            await self._int_send_packet_while_connected(packets)
+            if future:
+                try:
+                    await asyncio.wait_for(future, RESPONSE_WAIT_TIMEOUT)
+                except asyncio.TimeoutError:
+                    _LOGGER.error(
+                        "%s: timeout receiving response, RSSI: %s",
+                        self.address,
+                        self.rssi,
+                    )
+                    result = False
+            return result
+        finally:
+            if future is not None:
+                self._input_expected_responses.pop(seq_num, None)
+                if not future.done():
+                    future.cancel()
 
     async def _int_send_packet_while_connected(
         self,
@@ -1186,7 +1190,7 @@ class TuyaBLEDevice:
                         packet,
                         False,
                     )
-                except:
+                except Exception:
                     _LOGGER.error(
                         "%s: Error during sending packet",
                         self.address,

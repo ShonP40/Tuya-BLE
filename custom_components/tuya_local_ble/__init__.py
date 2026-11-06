@@ -68,21 +68,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = TuyaBLECoordinator(hass, device)
 
-    '''
-    try:
-        await device.update()
-    except BLEAK_EXCEPTIONS as ex:
-        raise ConfigEntryNotReady(
-            f"Could not communicate with Tuya BLE device with address {address}"
-        ) from ex
-    '''
-    #hass.async_create_task(device.update())
-
     last_raykube_advertisement_update = 0.0
     # Sleepy (advertisement-gated) devices: True once a status update has
     # succeeded, so later advertisements do not trigger needless reconnects.
     gated_status_received = False
     gated_update_task = None
+    initial_update_task = None
 
     async def _async_update_raykube_from_advertisement() -> None:
         """Best-effort Raykube state refresh after a BLE advertisement."""
@@ -120,6 +111,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception:
                 _LOGGER.debug(
                     "%s: Status update failed; retrying in %ss",
+                    address,
+                    delay,
+                    exc_info=True,
+                )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 1800)
+
+    @callback
+    def _cancel_status_updates() -> None:
+        for task in (gated_update_task, initial_update_task):
+            if task is not None and not task.done():
+                task.cancel()
+
+    entry.async_on_unload(_cancel_status_updates)
+
+    async def _async_initial_update() -> None:
+        """Refresh ordinary devices without making startup wait for BLE."""
+        delay = 60
+        while True:
+            try:
+                async with asyncio.timeout(60):
+                    await device.update()
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                _LOGGER.debug(
+                    "%s: Initial status refresh failed; retrying in %ss",
                     address,
                     delay,
                     exc_info=True,
@@ -173,28 +192,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass, _async_gated_update(), f"{DOMAIN}_status_{address}"
         )
 
-        @callback
-        def _cancel_gated_update() -> None:
-            if gated_update_task is not None and not gated_update_task.done():
-                gated_update_task.cancel()
-
-        entry.async_on_unload(_cancel_gated_update)
-    else:
-        await device.update()
-
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = TuyaBLEData(
         entry.title,
         device,
         product_info,
         manager,
         coordinator,
+        cancel_status_updates=_cancel_status_updates,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    if not device.is_advertisement_gated:
+        initial_update_task = entry.async_create_background_task(
+            hass, _async_initial_update(), f"{DOMAIN}_status_{address}"
+        )
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     async def _async_stop(event: Event) -> None:
         """Close the connection."""
+        _cancel_status_updates()
         await device.stop()
 
     entry.async_on_unload(
@@ -212,6 +228,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         data: TuyaBLEData = hass.data[DOMAIN].pop(entry.entry_id)
+        if data.cancel_status_updates is not None:
+            data.cancel_status_updates()
         await data.device.stop()
 
     return unload_ok

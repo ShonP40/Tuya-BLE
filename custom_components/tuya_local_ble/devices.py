@@ -172,6 +172,7 @@ class TuyaBLEData:
     product: TuyaBLEProductInfo
     manager: HASSTuyaBLEDeviceManager
     coordinator: TuyaBLECoordinator
+    cancel_status_updates: CALLBACK_TYPE | None = None
 
 
 @dataclass
