@@ -29,12 +29,11 @@
 
 <h2 align="center">Installation</h2>
 <p align="center">
-  To install, place the <code>custom_components</code> folder into your Home Assistant configuration directory. <br>
-  Alternatively, you can install via <a href="https://hacs.xyz/">HACS</a>.
+  To install, add this repository to your Home Assistant marketplace & install the integration.
 </p>
 <p align="center">
-  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=ShonP40&repository=Tuya-BLE&category=integration">
-    <img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="HACS">
+  <a href="https://my.home-assistant.io/redirect/marketplace_repository/?owner=ShonP40&repository=Tuya-BLE&category=integration">
+    <img src="https://my.home-assistant.io/badges/marketplace_repository.svg" alt="HACS">
   </a>
 </p>
 
@@ -44,7 +43,7 @@
   (or accept the automatic Bluetooth discovery notification when a supported device is nearby). Pick your device
   from the list, and if it isn't already registered, you'll be prompted right there in the UI for its credentials:
   UUID, local key, device ID, category, and product ID (device name, product name, product model and BLE unlock
-  check are optional). You can obtain these using [TinyTuya](https://github.com/jasonacox/tinytuya) against your
+  check are optional). You can obtain these using <a href="https://github.com/jasonacox/tinytuya">TinyTuya</a> against your
   Tuya cloud account — no need to unpair the device from the Tuya app first.
 </p>
 <p align="center">
