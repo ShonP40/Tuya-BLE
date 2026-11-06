@@ -172,6 +172,16 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                     ),
                 ),
             ],
+            "nglqaett": [  # HTMCKM5 B5
+                TuyaBLESwitchMapping(
+                    dp_id=33,
+                    description=SwitchEntityDescription(
+                        key="automatic_lock",
+                        icon="mdi:lock-clock",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
         },
     ),
     "ms": TuyaBLECategorySwitchMapping(

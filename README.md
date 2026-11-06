@@ -60,7 +60,7 @@
 
   You can obtain the device MAC address, UUID, local key, device ID, and product ID using [TinyTuya](https://github.com/jasonacox/tinytuya).
 
-  Raykube A1 Ultra / A1 Pro Max (`hc7n0urm`) and CTL20H SmartLock (`y2yaegze`) devices require the device-specific `ble_unlock_check` value in `devices.json` for remote unlock. Without it, locking may work but unlocking will fail before a BLE command is built. See [`docs/raykube-a1-ultra-fd50.md`](docs/raykube-a1-ultra-fd50.md) and [`docs/ctl20h-smartlock-fd50.md`](docs/ctl20h-smartlock-fd50.md).
+  Raykube A1 Ultra / A1 Pro Max (`hc7n0urm`), CTL20H SmartLock (`y2yaegze`) and HTMCKM5 B5 (`nglqaett`) devices require the device-specific `ble_unlock_check` value in `devices.json` for remote unlock. Without it, remote unlock will fail before a BLE command is built. See [`docs/raykube-a1-ultra-fd50.md`](docs/raykube-a1-ultra-fd50.md) and [`docs/ctl20h-smartlock-fd50.md`](docs/ctl20h-smartlock-fd50.md) for the existing FD50 lock setup examples.
 
   The `j3n6jw2y` lock has no lock/unlock command DP; Home Assistant lock/unlock toggles passage mode (dp 78 `special_control`) off/on. No `ble_unlock_check` value is needed.
 
@@ -134,10 +134,15 @@
       <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>
-      <td>Smart Locks<br>(jtmspro)</td>
+      <td rowspan="2">Smart Locks<br>(jtmspro)</td>
       <td>Raykube A1 Ultra / A1 Pro Max / CTL20H SmartLock / HL Knob-2 / MYPIN HS0358 / j3n6jw2y Smart Lock / EC-LOCK (BAFUWEIY)</td>
       <td>'rlyxv7pe', 'hc7n0urm', 'y2yaegze', 'ikphogdj', 'c6hfl8bt', 'j3n6jw2y', 'vsf3sqif'</td>
       <td>Allows lock/unlock control and status monitoring.</td>
+    </tr>
+    <tr>
+      <td>HTMCKM5 B5</td>
+      <td>'nglqaett'</td>
+      <td>Supports remote unlock, lock status monitoring, battery state, beep volume, and auto-lock settings. Remote lock is not exposed because this model has no manual_lock (DP46).</td>
     </tr>
     <tr>
       <td>Climate<br>(wk)</td>

@@ -179,6 +179,20 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                     ),
                 ),
             ],
+            "nglqaett":  # HTMCKM5 B5
+            [
+                TuyaBLESelectMapping(
+                    dp_id=31,
+                    description=SelectEntityDescription(
+                        key="beep_volume",
+                        options=[
+                            "mute",
+                            "high",
+                        ],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
         }
     ),    
     "szjqr": TuyaBLECategorySelectMapping(
