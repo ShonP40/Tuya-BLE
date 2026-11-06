@@ -52,6 +52,15 @@ class TuyaBLECategoryBinarySensorMapping:
     products: dict[str, list[TuyaBLEBinarySensorMapping]] | None = None
     mapping: list[TuyaBLEBinarySensorMapping] | None = None
 
+
+def fault_bitmap_getter(sensor: TuyaBLEBinarySensor) -> None:
+    datapoint = sensor._device.datapoints[sensor._mapping.dp_id]
+    if datapoint and datapoint.value:
+        sensor._attr_is_on = any(byte != 0 for byte in bytes(datapoint.value))
+    else:
+        sensor._attr_is_on = False
+
+
 mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = {
     "wk": TuyaBLECategoryBinarySensorMapping(
         products={
@@ -67,7 +76,21 @@ mapping: dict[str, TuyaBLECategoryBinarySensorMapping] = {
                 ),
             ],
         },
-    ),   
+    ),
+    "ggq": TuyaBLECategoryBinarySensorMapping(
+        products={
+            "qycalacn": [  # Hoselink Dual-Outlet Tap Timer
+                TuyaBLEBinarySensorMapping(
+                    dp_id=19,
+                    description=BinarySensorEntityDescription(
+                        key="fault",
+                        device_class=BinarySensorDeviceClass.PROBLEM,
+                    ),
+                    getter=fault_bitmap_getter,
+                ),
+            ],
+        },
+    ),
 }
 
 

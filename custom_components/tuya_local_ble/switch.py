@@ -361,6 +361,20 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
                     ),
                 ),
             ],
+            "qycalacn": [  # Hoselink Dual-Outlet Tap Timer
+                TuyaBLESwitchMapping(
+                    dp_id=105,
+                    description=SwitchEntityDescription(
+                        key="switch_1",
+                    ),
+                ),
+                TuyaBLESwitchMapping(
+                    dp_id=104,
+                    description=SwitchEntityDescription(
+                        key="switch_2",
+                    ),
+                ),
+            ],
         },
     ),
 }

@@ -1184,7 +1184,6 @@ class TuyaBLEDevice:
         for packet in packets:
             if self._client:
                 try:
-                    # _LOGGER.debug("%s: Sending packet: %s", self.address, packet.hex())
                     await self._client.write_gatt_char(
                         self._characteristic_write,
                         packet,
@@ -1968,7 +1967,6 @@ class TuyaBLEDevice:
 
     def _notification_handler(self, _sender: int, data: bytearray) -> None:
         """Handle notification responses."""
-        _LOGGER.debug("%s: Packet received: %s", self.address, data.hex())
         self._last_rx_time = time.monotonic()
 
         pos: int = 0
@@ -2014,6 +2012,20 @@ class TuyaBLEDevice:
             return
         elif len(self._input_buffer) == self._input_expected_length:
             self._parse_input()
+
+    async def async_send_raw_command(self, dp_id: int, value: bytes) -> None:
+        """Send a V3 raw command without replacing the last reported DP value.
+
+        Schedule commands and reports have different layouts. Keeping the
+        report intact prevents a create command being mistaken for state.
+        """
+        if not 0 <= dp_id <= 255 or not isinstance(value, bytes) or len(value) > 255:
+            raise ValueError("Invalid raw datapoint command")
+        await self._ensure_connected()
+        if self._protocol_version != 3:
+            raise TuyaBLEDeviceError(0)
+        data = pack(">BBB", dp_id, TuyaBLEDataPointType.DT_RAW.value, len(value)) + value
+        await self._send_packet(TuyaBLECode.FUN_SENDER_DPS, data, False)
 
     async def _send_datapoints_v3(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""

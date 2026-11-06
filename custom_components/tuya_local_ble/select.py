@@ -12,6 +12,7 @@ from homeassistant.components.select import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -308,6 +309,30 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
             ],
         },
     ),
+    "ggq": TuyaBLECategorySelectMapping(
+        products={
+            "qycalacn": [  # Hoselink Dual-Outlet Tap Timer
+                TuyaBLESelectMapping(
+                    dp_id=117,
+                    description=SelectEntityDescription(
+                        key="weather_delay",
+                        icon="mdi:weather-rainy",
+                        options=["off", "1", "2", "3", "4", "5", "6", "7"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+                TuyaBLESelectMapping(
+                    dp_id=114,
+                    description=SelectEntityDescription(
+                        key="weather_delay2",
+                        icon="mdi:weather-rainy",
+                        options=["off", "1", "2", "3", "4", "5", "6", "7"],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
+        },
+    ),
 }
 
 
@@ -416,6 +441,18 @@ async def async_setup_entry(
 ) -> None:
     """Set up the Tuya BLE sensors."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
+    if data.device.category == "ggq" and data.device.product_id == "qycalacn":
+        registry = er.async_get(hass)
+        for key in ("weather_delay", "weather_delay2"):
+            entity_id = registry.async_get_entity_id(
+                "select", DOMAIN, f"{data.device.device_id}-{key}"
+            )
+            if (
+                entity_id
+                and registry.async_get(entity_id).disabled_by
+                == er.RegistryEntryDisabler.INTEGRATION
+            ):
+                registry.async_update_entity(entity_id, disabled_by=None)
     mappings = get_mapping_by_device(data.device)
     entities: list[TuyaBLESelect] = []
     for mapping in mappings:

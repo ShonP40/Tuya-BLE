@@ -43,6 +43,7 @@ from .const import (
     DOMAIN,
 )
 from .devices import TuyaBLEData, TuyaBLEEntity, TuyaBLEProductInfo
+from .schedule_sensor import WateringScheduleSensor, register_services
 from .tuya_ble import TuyaBLEDataPointType, TuyaBLEDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -509,6 +510,43 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                     ),
                 ),
             ],
+            "qycalacn": [  # Hoselink Dual-Outlet Tap Timer
+                TuyaBLEBatteryMapping(dp_id=11),
+                TuyaBLESensorMapping(
+                    dp_id=111,
+                    description=SensorEntityDescription(
+                        key="use_time_1",
+                        device_class=SensorDeviceClass.DURATION,
+                        native_unit_of_measurement=UnitOfTime.SECONDS,
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=110,
+                    description=SensorEntityDescription(
+                        key="use_time_2",
+                        device_class=SensorDeviceClass.DURATION,
+                        native_unit_of_measurement=UnitOfTime.SECONDS,
+                        state_class=SensorStateClass.MEASUREMENT,
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=112,
+                    description=SensorEntityDescription(
+                        key="status_1",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=["manual", "auto", "idle"],
+                    ),
+                ),
+                TuyaBLESensorMapping(
+                    dp_id=113,
+                    description=SensorEntityDescription(
+                        key="status_2",
+                        device_class=SensorDeviceClass.ENUM,
+                        options=["manual", "auto", "idle"],
+                    ),
+                ),
+            ],
         },
     ),
 }
@@ -608,7 +646,7 @@ async def async_setup_entry(
     """Set up the Tuya BLE sensors."""
     data: TuyaBLEData = hass.data[DOMAIN][entry.entry_id]
     mappings = get_mapping_by_device(data.device)
-    entities: list[TuyaBLESensor] = [
+    entities: list[SensorEntity] = [
         TuyaBLESensor(
             hass,
             data.coordinator,
@@ -630,4 +668,9 @@ async def async_setup_entry(
                     mapping,
                 )
             )
+    if data.device.category == "ggq" and data.device.product_id == "qycalacn":
+        entities.extend(
+            WateringScheduleSensor(hass, data, dp_id) for dp_id in (101, 102)
+        )
+        register_services()
     async_add_entities(entities)

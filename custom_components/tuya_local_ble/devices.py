@@ -344,6 +344,10 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="Irrigation computer",
             ),
+            "qycalacn":  # device product_id
+            TuyaBLEProductInfo(
+                name="Hoselink Dual-Outlet Tap Timer",
+            ),
         },
     ),
 }

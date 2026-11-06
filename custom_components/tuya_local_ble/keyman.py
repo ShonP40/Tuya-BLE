@@ -59,9 +59,12 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
     async def load_device_config(self):
         devicedata_path = os.path.join(self._hass.config.config_dir, CONF_CRED_FILE)
 
-        async with aiofiles.open(devicedata_path, mode='r') as f:
-            contents = await f.read()
-        self._devicedata = json.loads(contents)
+        try:
+            async with aiofiles.open(devicedata_path, mode='r') as f:
+                contents = await f.read()
+            self._devicedata = json.loads(contents)
+        except FileNotFoundError:
+            self._devicedata = {}
 
 
     async def get_device_credentials(
@@ -71,9 +74,13 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
         save_data: bool = False,
     ) -> TuyaBLEDeviceCredentials | None:
         """Get credentials of the Tuya BLE device."""
+        result = self._credentials_from_options(address)
+        if result:
+            return result
+
         credentials: dict[str, any] | None = None
-        result: TuyaBLEDeviceCredentials | None = None
-        
+        result = None
+
         if self._devicedata == None:
             await self.load_device_config()
 
@@ -99,6 +106,16 @@ class HASSTuyaBLEDeviceManager(AbstaractTuyaBLEDeviceManager):
             _LOGGER.debug("Retrieved: %s", result)
 
         return result
+
+    def _credentials_from_options(
+        self, address: str
+    ) -> TuyaBLEDeviceCredentials | None:
+        """Build credentials from the config entry's options, if present."""
+        if self._data.get(CONF_ADDRESS) != address:
+            return None
+        return self.check_and_create_device_credentials(
+            *(self._data.get(key) for key in CONF_TUYA_DEVICE_KEYS)
+        )
 
     @property
     def data(self) -> dict[str, Any]:

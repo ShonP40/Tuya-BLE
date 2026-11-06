@@ -40,7 +40,16 @@
 
 <h2 align="center">Configuration & Setup</h2>
 <p align="center">
-  Once installed, you will need to manually create a `devices.json` file in `config/tuya_local_ble` with the following format:
+  Once installed, add the integration from Settings → Devices & Services → Add Integration → Tuya Local BLE
+  (or accept the automatic Bluetooth discovery notification when a supported device is nearby). Pick your device
+  from the list, and if it isn't already registered, you'll be prompted right there in the UI for its credentials:
+  UUID, local key, device ID, category, and product ID (device name, product name, product model and BLE unlock
+  check are optional). You can obtain these using [TinyTuya](https://github.com/jasonacox/tinytuya) against your
+  Tuya cloud account — no need to unpair the device from the Tuya app first.
+</p>
+<p align="center">
+  <b>Legacy / bulk import:</b> if you'd rather provision several devices at once outside the UI, you can still
+  manually create a `devices.json` file in `config/tuya_local_ble`, keyed by the device's BLE MAC address:
 
   ```json
   {
@@ -157,10 +166,15 @@
       <td>Monitors water intake and temperature.</td>
     </tr>
     <tr>
-      <td>Irrigation Computer<br>(ggq)</td>
+      <td rowspan="2">Irrigation Computer<br>(ggq)</td>
       <td>Irrigation Computer</td>
       <td>'6pahkcau'</td>
       <td>Automates and schedules garden or lawn watering.</td>
+    </tr>
+    <tr>
+      <td>Hoselink Dual-Outlet Tap Timer</td>
+      <td>'qycalacn'</td>
+      <td>Two independent outlets: switches, countdowns, normal/cyclic schedules, weather delays, and usage/battery/status/fault sensors. See the <a href="docs/hoselink-tap-timer.md#watering-schedules">schedule actions guide</a>.</td>
     </tr>
   </tbody>
 </table>

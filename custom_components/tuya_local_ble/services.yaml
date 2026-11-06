@@ -1,0 +1,227 @@
+set_normal_schedule:
+  name: Set normal watering schedule
+  description: Create or replace a schedule on the normal schedules sensor. All schedule
+    settings must be supplied again when editing.
+  target:
+    entity:
+    - integration: tuya_local_ble
+      domain: sensor
+  fields:
+    schedule_id:
+      name: Schedule ID
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+      description: Omit to create a schedule. To replace an existing schedule, use
+        its ID from the target sensor attributes.
+    outlet:
+      name: Outlet
+      required: true
+      selector:
+        select:
+          options:
+          - '1'
+          - '2'
+    start_time:
+      name: Start time
+      required: true
+      selector:
+        time: {}
+      description: Local time on the timer, with whole minutes.
+    duration:
+      name: Irrigation duration
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          mode: box
+          unit_of_measurement: min
+    enabled:
+      name: Enabled
+      required: false
+      selector:
+        boolean: {}
+      default: true
+    recurrence:
+      name: Repeat
+      required: false
+      selector:
+        select:
+          options:
+          - value: weekly
+            label: Selected weekdays
+          - value: odd_days
+            label: Odd-numbered days
+          - value: even_days
+            label: Even-numbered days
+          - value: interval
+            label: Every X days
+      default: weekly
+    weekdays:
+      name: Weekdays
+      required: false
+      selector:
+        select:
+          options:
+          - value: sun
+            label: Sunday
+          - value: mon
+            label: Monday
+          - value: tue
+            label: Tuesday
+          - value: wed
+            label: Wednesday
+          - value: thu
+            label: Thursday
+          - value: fri
+            label: Friday
+          - value: sat
+            label: Saturday
+          multiple: true
+      description: Required for weekly schedules.
+    start_date:
+      name: Start date
+      required: false
+      selector:
+        date: {}
+      description: Required for every-X-days schedules. Other new schedules use today.
+    interval_days:
+      name: Interval in days
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+      description: Used only with every-X-days recurrence.
+      default: 1
+set_cyclic_schedule:
+  name: Set cyclic watering schedule
+  description: Create or replace a cycle on the cyclic schedules sensor. The timer
+    repeats watering within the selected window. All settings must be supplied again
+    when editing.
+  target:
+    entity:
+    - integration: tuya_local_ble
+      domain: sensor
+  fields:
+    schedule_id:
+      name: Schedule ID
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+      description: Omit to create a schedule. To replace an existing schedule, use
+        its ID from the target sensor attributes.
+    outlet:
+      name: Outlet
+      required: true
+      selector:
+        select:
+          options:
+          - '1'
+          - '2'
+    start_time:
+      name: Start time
+      required: true
+      selector:
+        time: {}
+      description: Local time on the timer, with whole minutes.
+    duration:
+      name: Irrigation duration
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          mode: box
+          unit_of_measurement: min
+    enabled:
+      name: Enabled
+      required: false
+      selector:
+        boolean: {}
+      default: true
+    end_time:
+      name: End time
+      required: true
+      selector:
+        time: {}
+      description: Must follow the start time on the same day.
+    interval:
+      name: Interval
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          mode: box
+          unit_of_measurement: min
+      description: Matches the app interval setting; off-time versus start-to-start
+        timing is unverified.
+    weekdays:
+      name: Weekdays
+      required: true
+      selector:
+        select:
+          options:
+          - value: sun
+            label: Sunday
+          - value: mon
+            label: Monday
+          - value: tue
+            label: Tuesday
+          - value: wed
+            label: Wednesday
+          - value: thu
+            label: Thursday
+          - value: fri
+            label: Friday
+          - value: sat
+            label: Saturday
+          multiple: true
+      description: Required for weekly schedules.
+set_schedule_enabled:
+  name: Enable or disable watering schedule
+  description: Change only the enabled flag of a normal or cyclic schedule.
+  target:
+    entity:
+    - integration: tuya_local_ble
+      domain: sensor
+  fields:
+    schedule_id:
+      name: Schedule ID
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+    enabled:
+      name: Enabled
+      required: true
+      selector:
+        boolean: {}
+delete_schedule:
+  name: Delete watering schedule
+  description: Delete one schedule by ID from the target normal or cyclic schedules
+    sensor.
+  target:
+    entity:
+    - integration: tuya_local_ble
+      domain: sensor
+  fields:
+    schedule_id:
+      name: Schedule ID
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box

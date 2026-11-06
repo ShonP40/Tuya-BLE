@@ -443,6 +443,30 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
                     ),
                 ),
             ],
+            "qycalacn": [  # Hoselink Dual-Outlet Tap Timer
+                TuyaBLENumberMapping(
+                    dp_id=106,
+                    description=NumberEntityDescription(
+                        key="countdown_1",
+                        icon="mdi:timer",
+                        native_max_value=1440,
+                        native_min_value=0,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        native_step=1,
+                    ),
+                ),
+                TuyaBLENumberMapping(
+                    dp_id=103,
+                    description=NumberEntityDescription(
+                        key="countdown_2",
+                        icon="mdi:timer",
+                        native_max_value=1440,
+                        native_min_value=0,
+                        native_unit_of_measurement=UnitOfTime.MINUTES,
+                        native_step=1,
+                    ),
+                ),
+            ],
         },
     ),
     "jtmspro": TuyaBLECategoryNumberMapping(

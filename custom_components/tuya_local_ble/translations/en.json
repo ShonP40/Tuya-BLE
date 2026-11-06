@@ -4,7 +4,7 @@
         "no_unconfigured_devices": "No unconfigured devices found."
       },
       "error": {
-        "device_not_registered": "Device is not registered, please check config."
+        "invalid_credentials": "Could not validate these credentials, please check the required fields."
       },
       "flow_title": "{name}",
       "step": {
@@ -13,12 +13,33 @@
             "address": "Tuya BLE device"
           },
           "description": "Select Tuya BLE device to setup. Device must be registered in the cloud using the mobile application. It's better to unbind the device from Tuya Bluetooth gateway, if any."
+        },
+        "credentials": {
+          "data": {
+            "uuid": "UUID",
+            "local_key": "Local key",
+            "device_id": "Device ID",
+            "category": "Category",
+            "product_id": "Product ID",
+            "device_name": "Device name (optional)",
+            "product_name": "Product name (optional)",
+            "product_model": "Product model (optional)",
+            "ble_unlock_check": "BLE unlock check (optional, lock devices only)"
+          },
+          "description": "This device isn't in devices.json. Enter its credentials directly - you can obtain the UUID, local key, device ID, category and product ID using TinyTuya (https://github.com/jasonacox/tinytuya) against your Tuya cloud account."
         }
       }
     },
     "options": {
     "step": {
       "init": {
+        "title": "Tuya BLE options",
+        "menu_options": {
+          "manage_schedules": "Manage schedules",
+          "connection_options": "Connection settings"
+        }
+      },
+      "connection_options": {
         "title": "Tuya BLE options",
         "description": "Optional connection behavior. Keep connected is mainly useful for battery locks (e.g. Raykube) when you want live reverse sync; default is off.",
         "data": {
@@ -27,7 +48,64 @@
         "data_description": {
           "keep_connected": "When enabled, maintain a persistent BLE session with periodic keepalive (like Gimdow). When disabled, connect on demand and use advertisement refresh. Prefer ESPHome BLE proxies if enabling this."
         }
+      },
+      "manage_schedules": {
+        "title": "Manage watering schedules",
+        "description": "Select a schedule to edit it, or add a new schedule. Both valves are listed. Close this dialog at any time to exit without sending changes.\n\n{warning}",
+        "data": {
+          "schedule": "Schedule or action"
+        }
+      },
+      "normal_schedule": {
+        "title": "Normal watering schedule",
+        "description": "Set the valve, time, duration, and repeat pattern. Submit sends the settings to the timer and completes this flow.\n\n{error}",
+        "data": {
+          "outlet": "Valve",
+          "start_time": "Start time",
+          "duration": "Irrigation duration (minutes)",
+          "enabled": "Enabled",
+          "recurrence": "Repeat",
+          "weekdays": "Days of the week",
+          "start_date": "First watering date",
+          "interval_days": "Repeat every (days)",
+          "delete": "Delete this schedule"
+        },
+        "data_description": {
+          "start_time": "Local timer time, with whole minutes.",
+          "weekdays": "Used only for Selected weekdays. Choose at least one day.",
+          "start_date": "Used only for Every X days.",
+          "interval_days": "Used only for Every X days; ignored for other repeat patterns.",
+          "delete": "Enable this toggle and press Submit to delete the schedule instead of saving your edits."
+        }
+      },
+      "cyclic_schedule": {
+        "title": "Cyclic watering schedule",
+        "description": "Repeat watering within the selected time window on the chosen weekdays. Duration and interval are in minutes. Submit sends the settings to the timer and completes this flow.\n\n{error}",
+        "data": {
+          "outlet": "Valve",
+          "start_time": "Start time",
+          "duration": "Irrigation duration (minutes)",
+          "enabled": "Enabled",
+          "end_time": "End time",
+          "interval": "Interval (minutes)",
+          "weekdays": "Days of the week",
+          "delete": "Delete this schedule"
+        },
+        "data_description": {
+          "start_time": "Local timer time, with whole minutes.",
+          "end_time": "Must follow the start time on the same day.",
+          "interval": "Matches the interval setting in the app.",
+          "delete": "Enable this toggle and press Submit to delete the schedule instead of saving your edits."
+        }
       }
+    },
+    "abort": {
+      "schedule_unavailable": "The schedule or its sensor is no longer available. Enable the schedule sensors, wait for the timer to connect, and reopen Configure.",
+      "unsupported_schedule": "This schedule uses an unknown repeat pattern and cannot be edited here. Use the schedule actions to enable, disable, or delete it."
+    },
+    "error": {
+      "schedule_change_failed": "The schedule change could not be confirmed. See the details above and check the timer before retrying.",
+      "start_date_required": "Select the first watering date."
     }
   },
   "entity": {
@@ -66,6 +144,12 @@
         },
         "countdown_duration": {
           "name": "Irrigation duration"
+        },
+        "countdown_1": {
+          "name": "Countdown 1"
+        },
+        "countdown_2": {
+          "name": "Countdown 2"
         }
       },
       "select": {
@@ -92,14 +176,25 @@
         },
         "lock_direction": {
           "name": "Lock Direction"
-        }  
+        },
+        "weather_delay": {
+          "name": "Weather delay 1"
+        },
+        "weather_delay2": {
+          "name": "Weather delay 2"
+        }
       },
       "binary_sensor": {
         "low_battery": {
           "name": "Low"
+        },
+        "fault": {
+          "name": "Fault"
         }
       },
       "sensor": {
+        "normal_schedules": {"name": "Normal schedules"},
+        "cyclic_schedules": {"name": "Cyclic schedules"},
         "battery": {
           "name": "Battery"
         },
@@ -167,6 +262,28 @@
         },
         "propane": {
             "name": "Propane"
+        },
+        "use_time_1": {
+            "name": "Use time 1"
+        },
+        "use_time_2": {
+            "name": "Use time 2"
+        },
+        "status_1": {
+            "name": "Status 1",
+            "state": {
+              "manual": "Manual",
+              "auto": "Auto",
+              "idle": "Idle"
+            }
+        },
+        "status_2": {
+            "name": "Status 2",
+            "state": {
+              "manual": "Manual",
+              "auto": "Auto",
+              "idle": "Idle"
+            }
         }
       },
       "switch": {
@@ -220,7 +337,13 @@
         },            
         "water_valve": {
             "name": "Irrigation valve"
-        }    
+        },
+        "switch_1": {
+            "name": "Switch 1"
+        },
+        "switch_2": {
+            "name": "Switch 2"
+        }
       },
       "lock": {
         "manual_lock": {
