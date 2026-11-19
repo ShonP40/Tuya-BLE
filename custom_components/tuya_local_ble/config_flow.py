@@ -26,6 +26,7 @@ from .tuya_ble import SERVICE_UUID
 from .const import (
     CONF_KEEP_CONNECTED,
     CONF_BLE_UNLOCK_CHECK,
+    CONF_SEC_KEY,
     CONF_CATEGORY,
     CONF_DEVICE_NAME,
     CONF_LOCAL_KEY,
@@ -183,6 +184,7 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                 user_input.get(CONF_PRODUCT_NAME),
                 user_input.get(CONF_PRODUCT_MODEL),
                 user_input.get(CONF_BLE_UNLOCK_CHECK),
+                user_input.get(CONF_SEC_KEY),
             )
             if credentials is None:
                 errors["base"] = "invalid_credentials"
@@ -212,6 +214,7 @@ class TuyaBLEConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_PRODUCT_NAME): str,
                     vol.Optional(CONF_PRODUCT_MODEL): str,
                     vol.Optional(CONF_BLE_UNLOCK_CHECK): str,
+                    vol.Optional(CONF_SEC_KEY): str,
                 },
             ),
             errors=errors,

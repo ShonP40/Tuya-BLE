@@ -214,7 +214,12 @@ global_connect_lock = asyncio.Lock()
 # woken. Connecting to them on a blind retry loop almost never lines up with
 # the short window in which they accept a connection, so for these products
 # each connect attempt waits for a fresh advertisement first.
-ADVERTISEMENT_GATED_PRODUCTS = ("j3n6jw2y",)
+ADVERTISEMENT_GATED_PRODUCTS = ("j3n6jw2y", "qymgyczo")
+# Gated locks that do not hang up an idle link themselves. They accept a
+# single BLE connection, so holding it locks out the phone app: release
+# it shortly after each status read or command.
+RELEASE_IDLE_LINK_PRODUCTS = ("qymgyczo",)
+RELEASE_IDLE_LINK_SECONDS = 15
 # An advertisement younger than this is treated as "device awake right now".
 ADVERTISEMENT_FRESH_SECONDS = 5.0
 # How long one connect attempt waits for the device to advertise.
@@ -268,6 +273,11 @@ class TuyaBLEDevice:
         self._local_key: bytes | None = None
         self._login_key: bytes | None = None
         self._session_key: bytes | None = None
+        # MD5 input for the login/session keys: local_key[:6] normally,
+        # local_key + sec_key for Tuya "new-security" devices.
+        self._key_material: bytes | None = None
+        self._login_flag: int = 4
+        self._session_flag: int = 5
 
         self._is_paired = False
 
@@ -317,6 +327,18 @@ class TuyaBLEDevice:
         self._advertisement_data = advertisement_data
         self._last_advertisement_time = time.monotonic()
         self._advertisement_event.set()
+
+    @property
+    def releases_idle_link(self) -> bool:
+        """Return True if the link should be dropped soon after use."""
+        return self.product_id in RELEASE_IDLE_LINK_PRODUCTS
+
+    def release_idle_link_soon(self) -> None:
+        """Linger briefly for late reports, then free the connection."""
+        if self.releases_idle_link:
+            asyncio.create_task(
+                self.linger_connected(RELEASE_IDLE_LINK_SECONDS)
+            )
 
     @property
     def is_advertisement_gated(self) -> bool:
@@ -384,7 +406,21 @@ class TuyaBLEDevice:
                 )
             if self._device_info:
                 self._local_key = self._device_info.local_key[:6].encode()
-                self._login_key = hashlib.md5(self._local_key).digest()
+                sec_key = self._device_info.sec_key
+                if sec_key:
+                    # Tuya "new-security" devices (security flags 0x0E/0x0F):
+                    # keys derive from the full local_key plus the per-device
+                    # sec_key, which only the Tuya mobile API returns.
+                    self._key_material = (
+                        self._device_info.local_key + sec_key
+                    ).encode()
+                    self._login_flag = 14
+                    self._session_flag = 15
+                else:
+                    self._key_material = self._local_key
+                    self._login_flag = 4
+                    self._session_flag = 5
+                self._login_key = hashlib.md5(self._key_material).digest()
 
         return self._device_info is not None
 
@@ -938,10 +974,10 @@ class TuyaBLEDevice:
         security_flag: bytes
         if code == TuyaBLECode.FUN_SENDER_DEVICE_INFO:
             key = self._login_key
-            security_flag = b"\x04"
+            security_flag = pack(">B", self._login_flag)
         else:
             key = self._session_key
-            security_flag = b"\x05"
+            security_flag = pack(">B", self._session_flag)
 
         raw = bytearray()
         raw += pack(">IIHH", seq_num, response_to, code.value, len(data))
@@ -1209,9 +1245,9 @@ class TuyaBLEDevice:
     def _get_key(self, security_flag: int) -> bytes:
         if security_flag == 1:
             return self._auth_key
-        if security_flag == 4:
+        if security_flag in (4, 14):
             return self._login_key
-        elif security_flag == 5:
+        elif security_flag in (5, 15):
             return self._session_key
         else:
             pass
@@ -1410,7 +1446,7 @@ class TuyaBLEDevice:
         DP47 lock-state pushes. Frames it cannot consume exactly fall back to
         the heuristic `_parse_raykube_datapoints_v4`.
         """
-        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett"):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo"):
             if not self._parse_fd50_v4_report(data):
                 self._parse_raykube_datapoints_v4(data)
             return
@@ -1801,7 +1837,7 @@ class TuyaBLEDevice:
 
                 srand = data[6:12]
                 self._session_key = hashlib.md5(
-                    self._local_key + srand).digest()
+                    self._key_material + srand).digest()
                 self._auth_key = data[14:46]
 
             case TuyaBLECode.FUN_SENDER_PAIR:
@@ -2043,7 +2079,7 @@ class TuyaBLEDevice:
             data += pack(">BBB", dp.id, int(dp.type.value), len(value))
             data += value
 
-        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett"):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo"):
             if 6 in datapoint_ids:
                 # Raykube A1 Ultra / TuyaOS FD50 remote unlock command captured
                 # from the official app. It is built from the per-device
@@ -2157,7 +2193,7 @@ class TuyaBLEDevice:
         if not self.ble_unlock_check:
             raise TuyaBLEDeviceError(
                 "This TuyaOS FD50 lock (Raykube/hc7n0urm, ikphogdj, "
-                "c6hfl8bt, nglqaett) requires the device-specific ble_unlock_check "
+                "c6hfl8bt, nglqaett, qymgyczo) requires the device-specific ble_unlock_check "
                 "value in tuya_local_ble/devices.json"
             )
 
@@ -2227,19 +2263,21 @@ class TuyaBLEDevice:
 
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
-        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett") and 6 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo") and 6 in datapoint_ids:
             # This battery lock may be disconnected after Home Assistant startup,
             # so protocol_version can still be unknown here. The FD50 V4 path
             # establishes BLE connection and performs DEVICE_INFO/PAIR on demand.
             await self._send_datapoints_v3(datapoint_ids)
+            self.release_idle_link_soon()
             return
         # B5 settings
         if self.product_id == "nglqaett" and set(datapoint_ids).issubset({31, 33, 36}):
             await self._send_datapoints_v3(datapoint_ids)
             return
-        if self.product_id in ("hc7n0urm", "y2yaegze") and 46 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze", "qymgyczo") and 46 in datapoint_ids:
             # Candidate physical lock command; allow on-demand connect.
             await self._send_datapoints_v3(datapoint_ids)
+            self.release_idle_link_soon()
             return
         if self.product_id in ("hc7n0urm", "y2yaegze") and set(datapoint_ids).issubset({31, 48}):
             # Beep volume and lock direction use the same command-style V4
