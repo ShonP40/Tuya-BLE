@@ -105,6 +105,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             try:
                 await device.update()
                 gated_status_received = True
+                device.release_idle_link_soon()
                 return
             except asyncio.CancelledError:
                 raise

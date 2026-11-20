@@ -235,6 +235,14 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="B5 Lock",
             ),
+            "n1qxwwic":  # Evanshow Bluetooth lever handle
+            TuyaBLEProductInfo(
+                name="Evanshow Smart Lock",
+            ),
+            "qymgyczo":  # Evanshow Bluetooth lever handle (FD50, sec_key)
+            TuyaBLEProductInfo(
+                name="Evanshow Smart Lock",
+            ),
         },
     ),    
     "szjqr": TuyaBLECategoryInfo(

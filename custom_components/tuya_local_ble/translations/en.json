@@ -24,7 +24,8 @@
             "device_name": "Device name (optional)",
             "product_name": "Product name (optional)",
             "product_model": "Product model (optional)",
-            "ble_unlock_check": "BLE unlock check (optional, lock devices only)"
+            "ble_unlock_check": "BLE unlock check (optional, lock devices only)",
+            "sec_key": "Security key / secKey (optional, Tuya new-security BLE devices only)"
           },
           "description": "This device isn't in devices.json. Enter its credentials directly - you can obtain the UUID, local key, device ID, category and product ID using TinyTuya (https://github.com/jasonacox/tinytuya) against your Tuya cloud account."
         }

@@ -190,6 +190,40 @@ mapping: dict[str, TuyaBLECategoryLockMapping] = {
                     ),
                 ),
             ],
+            "n1qxwwic":  # Evanshow Bluetooth lever handle, legacy A201 GATT
+            [
+                TuyaBLELockMapping(
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # DP47 lock_motor_state: False = locked (verified).
+                    dp_id=47,
+                    value_means_locked=False,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
+            "qymgyczo":  # Evanshow Bluetooth lever handle, FD50 + sec_key
+            [
+                TuyaBLELockMapping(
+                    # Integration-side trigger; on the wire the unlock is a
+                    # DP71 V4 write built from ble_unlock_check.
+                    dp_id_unlock=6,
+                    dp_id_lock=46,
+                    # DP47 lock_motor_state: False = locked (verified).
+                    dp_id=47,
+                    value_means_locked=False,
+                    dp_id_nop=52,
+                    keep_connect=False,
+                    keep_connect_timer=60,
+                    description=LockEntityDescription(
+                        key="manual_lock"
+                    ),
+                ),
+            ],
             "c6hfl8bt":  # MYPIN HS0358 cabinet lock, TuyaOS FD50 transport
             [
                 TuyaBLELockMapping(
@@ -461,7 +495,7 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if self._device.product_id in ("hc7n0urm", "y2yaegze", "nglqaett"):
+        if self._device.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo"):
             # Battery locks sleep and may not keep an active BLE connection between
             # commands. Allow Home Assistant to call unlock; the command path will
             # establish a connection on demand.

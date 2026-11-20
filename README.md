@@ -72,6 +72,8 @@
 
   The `j3n6jw2y` lock has no lock/unlock command DP; Home Assistant lock/unlock toggles passage mode (dp 78 `special_control`) off/on. No `ble_unlock_check` value is needed.
 
+  Some newer Tuya BLE devices use Tuya's "new-security" login (security flags `0x0E`/`0x0F`): they drop the connection right after `FUN_SENDER_DEVICE_INFO` unless the keys are derived from the per-device `sec_key` as well as the `local_key`. Add `"sec_key": "<16 characters>"` to the device's entry in `devices.json` (or the optional field in the UI setup form) for these devices. `sec_key` is not returned by the Tuya OpenAPI/TinyTuya; it comes from the Tuya / Smart Life mobile app API (`secKey` on the device). Leave it out for every other device. See [`docs/evanshow-lever-lock-sec-key.md`](docs/evanshow-lever-lock-sec-key.md).
+
   HL Knob-2 (`ikphogdj`) devices also require the device-specific `ble_unlock_check` value in `devices.json` for remote unlock. Without it, locking may work but unlocking will fail before a BLE command is built. See [`docs/hl-knob-2-ikphogdj.md`](docs/hl-knob-2-ikphogdj.md).
 </p>
 
@@ -143,8 +145,8 @@
     </tr>
     <tr>
       <td rowspan="2">Smart Locks<br>(jtmspro)</td>
-      <td>Raykube A1 Ultra / A1 Pro Max / CTL20H SmartLock / HL Knob-2 / MYPIN HS0358 / j3n6jw2y Smart Lock / EC-LOCK (BAFUWEIY)</td>
-      <td>'rlyxv7pe', 'hc7n0urm', 'y2yaegze', 'ikphogdj', 'c6hfl8bt', 'j3n6jw2y', 'vsf3sqif'</td>
+      <td>Raykube A1 Ultra / A1 Pro Max / CTL20H SmartLock / HL Knob-2 / MYPIN HS0358 / j3n6jw2y Smart Lock / EC-LOCK (BAFUWEIY) / Evanshow Smart Lock</td>
+      <td>'rlyxv7pe', 'hc7n0urm', 'y2yaegze', 'ikphogdj', 'c6hfl8bt', 'j3n6jw2y', 'vsf3sqif', 'n1qxwwic', 'qymgyczo'</td>
       <td>Allows lock/unlock control and status monitoring.</td>
     </tr>
     <tr>

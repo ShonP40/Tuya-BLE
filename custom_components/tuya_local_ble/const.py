@@ -18,6 +18,8 @@ CONF_DEVICE_NAME: Final = "device_name"
 CONF_PRODUCT_MODEL: Final = "product_model"
 CONF_PRODUCT_NAME: Final = "product_name"
 CONF_BLE_UNLOCK_CHECK: Final = "ble_unlock_check"
+# Per-device key for Tuya "new-security" BLE devices (login flag 0x0E).
+CONF_SEC_KEY: Final = "sec_key"
 # Opt-in persistent BLE session for battery locks (e.g. Raykube hc7n0urm).
 # Default off: connect on demand + advertisement refresh. On: keepalive like rlyxv7pe.
 CONF_KEEP_CONNECTED: Final = "keep_connected"
