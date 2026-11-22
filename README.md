@@ -182,8 +182,7 @@
 
 <h2 align="center">Contributing</h2>
 <p align="center">
-  Contributions are welcome! If you encounter issues or have suggestions for enhancements, please open an issue or create a pull request respectively.
-  Please do not use issues for new device requests.
+  Contributions are welcome! If you encounter issues or have suggestions for enhancements, please open an issue or create a pull request respectively. <br> Please do not use issues for new device requests.
 </p>
 
 <h2 align="center">License</h2>
