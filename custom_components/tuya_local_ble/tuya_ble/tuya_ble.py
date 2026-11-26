@@ -2210,7 +2210,9 @@ class TuyaBLEDevice:
         prefix = check[2:4]
         check_code = check[4:12]
         check_key = check[13:17]
-        return b"\x00\x00\x00\x00\x01\x47\x00\x00\x13" + prefix + b"\x00\x01" + check_code + b"\x01" + check_key + b"\x00\x01"
+        # The member ID comes from ble_unlock_check; it is not always 0x0001.
+        member_id = check[0:2]
+        return b"\x00\x00\x00\x00\x01\x47\x00\x00\x13" + prefix + member_id + check_code + b"\x01" + check_key + b"\x00\x01"
 
     def _build_raykube_v4_enum_data(self, dp_id: int) -> bytes:
         """Build a Raykube/TuyaOS FD50 one-byte V4 enum write."""
