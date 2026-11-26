@@ -243,8 +243,12 @@ devices_database: dict[str, TuyaBLECategoryInfo] = {
             TuyaBLEProductInfo(
                 name="Evanshow Smart Lock",
             ),
+            "2ufqcqqi":  # K5 Smart Key Box (FD50, classic login)
+            TuyaBLEProductInfo(
+                name="K5 Smart Key Box",
+            ),
         },
-    ),    
+    ),
     "szjqr": TuyaBLECategoryInfo(
         products={
             "3yqdo5yt": TuyaBLEProductInfo(  # device product_id
