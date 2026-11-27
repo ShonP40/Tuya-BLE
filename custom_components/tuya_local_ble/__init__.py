@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import timedelta
 
 from bleak_retry_connector import BLEAK_RETRY_EXCEPTIONS as BLEAK_EXCEPTIONS, get_device
 
@@ -17,7 +18,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from .tuya_ble import TuyaBLEDevice
 
 from .keyman import HASSTuyaBLEDeviceManager
-from .const import DOMAIN
+from .const import CONF_KEEP_CONNECTED, CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL, DOMAIN
 from .devices import TuyaBLECoordinator, TuyaBLEData, get_device_product_info
 
 PLATFORMS: list[Platform] = [
@@ -66,7 +67,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     device.set_last_seen_provider(_last_seen)
     product_info = get_device_product_info(device)
 
-    coordinator = TuyaBLECoordinator(hass, device)
+    # Optional periodic status poll. Disabled by default (0) and skipped when
+    # keep_connected holds a live link already, so the default push-only
+    # behaviour is unchanged.
+    poll_minutes = int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
+    keep_connected = bool(entry.options.get(CONF_KEEP_CONNECTED, False))
+    poll_interval = (
+        timedelta(minutes=poll_minutes)
+        if poll_minutes > 0 and not keep_connected
+        else None
+    )
+    coordinator = TuyaBLECoordinator(hass, device, update_interval=poll_interval)
 
     last_raykube_advertisement_update = 0.0
     # Sleepy (advertisement-gated) devices: True once a status update has
