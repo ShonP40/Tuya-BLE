@@ -457,6 +457,12 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             self._isjammed = False
             self._update_attrs()
             self.async_write_ha_state()
+            # These locks auto-relock after `auto_lock_time` but do not push a
+            # lock-state update when they do, so HA would stay stuck showing
+            # "unlocked". The BLE link is still open right after the command, so
+            # re-query the real DP47 state once the auto-lock should have fired
+            # (and once more as a safety net) instead of assuming anything.
+            self._hass.async_create_task(self._recheck_state_after_autolock())
             return
 
         if self._device.product_id in ("hc7n0urm", "y2yaegze", "2ufqcqqi") and self._target_state == LockState.LOCKED:
@@ -484,6 +490,37 @@ class TuyaBLELock(TuyaBLEEntity, LockEntity):
             _LOGGER.debug("%s: post-command status refresh failed",
                           self._device.address, exc_info=True)
         await self._device.linger_connected(30)
+
+    async def _recheck_state_after_autolock(self) -> None:
+        """Re-read the real lock state after an auto-relock.
+
+        These locks auto-relock `auto_lock_time` (DP36) seconds after an
+        unlock but send no state push when they do. The BLE link is still open
+        right after the unlock command, so request a fresh status report once
+        the auto-lock should have fired (plus a safety-net second read a few
+        seconds later). `device.update()` refreshes DP47 -> the synthetic DP118
+        the entity reads, so the coordinator update then reflects the true
+        state. Best effort: if auto-lock is disabled or the lock does not
+        report the relock, the state simply stays as last observed - nothing is
+        assumed.
+        """
+        dp36 = self._device.datapoints[36]
+        auto_lock_time = int(dp36.value) if dp36 and dp36.value else 5
+        # Clamp so a bogus value can't schedule an absurd delay.
+        auto_lock_time = max(1, min(auto_lock_time, 120))
+        # First read just after the auto-lock should have fired; second read a
+        # few seconds later in case the first raced the relock.
+        for delay in (auto_lock_time + 2, 4):
+            await asyncio.sleep(delay)
+            try:
+                await asyncio.wait_for(self._device.update(), 15)
+            except Exception:  # noqa: BLE001 - best effort
+                _LOGGER.debug(
+                    "%s: auto-lock state re-check failed",
+                    self._device.address,
+                    exc_info=True,
+                )
+                return
 
     def update_device_state(self):
         datapoint = self._device.datapoints[self._mapping.dp_id]
