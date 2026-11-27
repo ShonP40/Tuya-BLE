@@ -246,6 +246,9 @@
         "residual_electricity": {
             "name": "Battery"
         },
+        "auto_lock_time": {
+            "name": "Auto-lock time"
+        },
         "alarm_lock": {
             "name": "Alarm"
         },

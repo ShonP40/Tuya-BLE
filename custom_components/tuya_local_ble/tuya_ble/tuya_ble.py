@@ -214,7 +214,7 @@ global_connect_lock = asyncio.Lock()
 # woken. Connecting to them on a blind retry loop almost never lines up with
 # the short window in which they accept a connection, so for these products
 # each connect attempt waits for a fresh advertisement first.
-ADVERTISEMENT_GATED_PRODUCTS = ("j3n6jw2y", "qymgyczo")
+ADVERTISEMENT_GATED_PRODUCTS = ("j3n6jw2y", "qymgyczo", "2ufqcqqi")
 # Gated locks that do not hang up an idle link themselves. They accept a
 # single BLE connection, so holding it locks out the phone app: release
 # it shortly after each status read or command.
@@ -1446,7 +1446,7 @@ class TuyaBLEDevice:
         DP47 lock-state pushes. Frames it cannot consume exactly fall back to
         the heuristic `_parse_raykube_datapoints_v4`.
         """
-        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo"):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo", "2ufqcqqi"):
             if not self._parse_fd50_v4_report(data):
                 self._parse_raykube_datapoints_v4(data)
             return
@@ -1493,12 +1493,12 @@ class TuyaBLEDevice:
                 type.name,
                 value,
             )
-            if self.product_id not in ("hc7n0urm", "y2yaegze"):
+            if self.product_id not in ("hc7n0urm", "y2yaegze", "2ufqcqqi"):
                 self._datapoints._update_from_device(id, time.time(), flags, type, value)
                 datapoints.append(self._datapoints[id])
 
             if (
-                self.product_id in ("hc7n0urm", "y2yaegze")
+                self.product_id in ("hc7n0urm", "y2yaegze", "2ufqcqqi")
                 and type == TuyaBLEDataPointType.DT_RAW
                 and raw_value == b"\x00\x01\x01"
                 and not self._input_expected_responses
@@ -2079,7 +2079,7 @@ class TuyaBLEDevice:
             data += pack(">BBB", dp.id, int(dp.type.value), len(value))
             data += value
 
-        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo"):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo", "2ufqcqqi"):
             if 6 in datapoint_ids:
                 # Raykube A1 Ultra / TuyaOS FD50 remote unlock command captured
                 # from the official app. It is built from the per-device
@@ -2265,7 +2265,7 @@ class TuyaBLEDevice:
 
     async def _send_datapoints(self, datapoint_ids: list[int]) -> None:
         """Send new values of datapoints to the device."""
-        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo") and 6 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze", "nglqaett", "qymgyczo", "2ufqcqqi") and 6 in datapoint_ids:
             # This battery lock may be disconnected after Home Assistant startup,
             # so protocol_version can still be unknown here. The FD50 V4 path
             # establishes BLE connection and performs DEVICE_INFO/PAIR on demand.
@@ -2276,12 +2276,12 @@ class TuyaBLEDevice:
         if self.product_id == "nglqaett" and set(datapoint_ids).issubset({31, 33, 36}):
             await self._send_datapoints_v3(datapoint_ids)
             return
-        if self.product_id in ("hc7n0urm", "y2yaegze", "qymgyczo") and 46 in datapoint_ids:
+        if self.product_id in ("hc7n0urm", "y2yaegze", "qymgyczo", "2ufqcqqi") and 46 in datapoint_ids:
             # Candidate physical lock command; allow on-demand connect.
             await self._send_datapoints_v3(datapoint_ids)
             self.release_idle_link_soon()
             return
-        if self.product_id in ("hc7n0urm", "y2yaegze") and set(datapoint_ids).issubset({31, 48}):
+        if self.product_id in ("hc7n0urm", "y2yaegze", "2ufqcqqi") and set(datapoint_ids).issubset({31, 48}):
             # Beep volume and lock direction use the same command-style V4
             # write framing as DP46 and must be allowed before protocol_version
             # is known on sleepy battery locks.

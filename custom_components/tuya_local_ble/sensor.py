@@ -337,8 +337,27 @@ mapping: dict[str, TuyaBLECategorySensorMapping] = {
                     ],
                 ),
             ],
+            "2ufqcqqi":  # K5 Smart Key Box, TuyaOS FD50
+            [
+                TuyaBLEBatteryMapping(
+                    # DP8 residual_electricity, 0-100 %. Reported spontaneously
+                    # in the FD50 V4 status snapshot on connect. (DP9
+                    # battery_state is in the cloud schema but is never reported
+                    # over BLE by this lock, so it is intentionally not mapped.)
+                    dp_id=8,
+                ),
+                TuyaBLESensorMapping(
+                    # DP36 auto_lock_time, seconds before the box relocks.
+                    dp_id=36,
+                    description=SensorEntityDescription(
+                        key="auto_lock_time",
+                        icon="mdi:timer-lock-outline",
+                        entity_category=EntityCategory.DIAGNOSTIC,
+                    ),
+                ),
+            ],
         }
-    ),      
+    ),
     "szjqr": TuyaBLECategorySensorMapping(
         products={
             **dict.fromkeys(
