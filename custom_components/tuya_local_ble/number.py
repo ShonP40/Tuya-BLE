@@ -471,6 +471,21 @@ mapping: dict[str, TuyaBLECategoryNumberMapping] = {
     ),
     "jtmspro": TuyaBLECategoryNumberMapping(
         products={
+            "rlyxv7pe": [  # Raykube AT1 / A1 Pro Max
+                TuyaBLENumberMapping(
+                    dp_id=36,
+                    description=NumberEntityDescription(
+                        key="auto_lock_time",
+                        name="Auto-lock time",
+                        icon="mdi:timer-lock-outline",
+                        native_max_value=1800,
+                        native_min_value=1,
+                        native_unit_of_measurement=UnitOfTime.SECONDS,
+                        native_step=1,
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
             "nglqaett": [  # HTMCKM5 B5
                 TuyaBLENumberMapping(
                     dp_id=36,

@@ -162,6 +162,17 @@ mapping: dict[str, TuyaBLECategorySwitchMapping] = {
     ),
     "jtmspro": TuyaBLECategorySwitchMapping(
         products={
+            "rlyxv7pe": [  # Raykube AT1 / A1 Pro Max
+                TuyaBLESwitchMapping(
+                    dp_id=33,
+                    description=SwitchEntityDescription(
+                        key="automatic_lock",
+                        name="Auto-lock",
+                        icon="mdi:lock-clock",
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
+            ],
             "ikphogdj": [  # HL Knob-2, TuyaOS FD50 lock
                 TuyaBLESwitchMapping(
                     dp_id=33,
