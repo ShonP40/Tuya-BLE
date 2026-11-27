@@ -2004,6 +2004,9 @@ class TuyaBLEDevice:
     def _notification_handler(self, _sender: int, data: bytearray) -> None:
         """Handle notification responses."""
         self._last_rx_time = time.monotonic()
+        if bytes(data) == getattr(self, "_last_notify_packet", None):
+            return
+        self._last_notify_packet = bytes(data)
 
         pos: int = 0
         packet_num: int
