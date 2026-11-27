@@ -133,6 +133,20 @@ mapping: dict[str, TuyaBLECategorySelectMapping] = {
                         entity_category=EntityCategory.CONFIG,
                     ),
                 ),
+                TuyaBLESelectMapping(
+                    dp_id=68,
+                    description=SelectEntityDescription(
+                        key="special_function",
+                        name="Calibrate mode",
+                        options=[
+                            "function1",
+                            "function2",
+                            "function3",
+                            "function4",
+                        ],
+                        entity_category=EntityCategory.CONFIG,
+                    ),
+                ),
             ],
             "hc7n0urm":  # Raykube A1 Ultra / A1 Pro Max TuyaOS FD50 lock
             [
