@@ -1,6 +1,7 @@
 """The Tuya BLE integration."""
 from __future__ import annotations
 from dataclasses import dataclass
+from datetime import timedelta
 
 import logging
 from homeassistant.const import CONF_ADDRESS, CONF_DEVICE_ID
@@ -96,12 +97,24 @@ class TuyaBLEEntity(CoordinatorEntity):
 class TuyaBLECoordinator(DataUpdateCoordinator[None]):
     """Data coordinator for receiving Tuya BLE updates."""
 
-    def __init__(self, hass: HomeAssistant, device: TuyaBLEDevice) -> None:
-        """Initialise the coordinator."""
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        device: TuyaBLEDevice,
+        update_interval: timedelta | None = None,
+    ) -> None:
+        """Initialise the coordinator.
+
+        When ``update_interval`` is set, DataUpdateCoordinator calls
+        ``_async_update_data`` on that cadence, which forces a status refresh
+        (connect, read, disconnect for on-demand devices). Left unset the
+        coordinator stays push-only, as before.
+        """
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
+            update_interval=update_interval,
         )
         self._device = device
         self._disconnected: bool = True
@@ -158,9 +171,20 @@ class TuyaBLECoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self):
         """Fetch data from API endpoint.
 
-        This is the place to pre-process the data to lookup tables
-        so entities can quickly look up their data.
+        No-op unless a poll interval is configured. With one set, force a
+        status refresh so sleepy/on-demand devices (e.g. battery locks) report
+        fresh data on a schedule. Failures are swallowed: a missed poll (device
+        asleep / out of range) should not mark every entity unavailable - the
+        next advertisement/poll recovers it.
         """
+        if self.update_interval is None:
+            return
+        try:
+            await self._device.update()
+        except Exception:  # noqa: BLE001 - best effort periodic refresh
+            _LOGGER.debug(
+                "%s: Scheduled poll failed", self._device.address, exc_info=True
+            )
 
 
 @dataclass

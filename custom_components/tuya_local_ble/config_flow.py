@@ -25,6 +25,8 @@ from .tuya_ble import SERVICE_UUID
 
 from .const import (
     CONF_KEEP_CONNECTED,
+    CONF_POLL_INTERVAL,
+    DEFAULT_POLL_INTERVAL,
     CONF_BLE_UNLOCK_CHECK,
     CONF_SEC_KEY,
     CONF_CATEGORY,
@@ -253,6 +255,9 @@ class TuyaBLEOptionsFlow(ScheduleOptionsFlow):
             options[CONF_KEEP_CONNECTED] = bool(
                 user_input.get(CONF_KEEP_CONNECTED, False)
             )
+            options[CONF_POLL_INTERVAL] = int(
+                user_input.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+            )
             return self.async_create_entry(title="", data=options)
 
         return self.async_show_form(
@@ -265,6 +270,14 @@ class TuyaBLEOptionsFlow(ScheduleOptionsFlow):
                             self.config_entry.options.get(CONF_KEEP_CONNECTED, False)
                         ),
                     ): bool,
+                    vol.Optional(
+                        CONF_POLL_INTERVAL,
+                        default=int(
+                            self.config_entry.options.get(
+                                CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
+                            )
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=1440)),
                 }
             ),
         )

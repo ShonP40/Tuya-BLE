@@ -24,6 +24,14 @@ CONF_SEC_KEY: Final = "sec_key"
 # Default off: connect on demand + advertisement refresh. On: keepalive like rlyxv7pe.
 CONF_KEEP_CONNECTED: Final = "keep_connected"
 
+# Optional periodic poll: minutes between forced status refreshes (connect,
+# read, disconnect). 0 (default) disables polling and preserves the push-only /
+# on-demand behaviour. Useful for sleepy devices (e.g. battery locks) whose
+# status - battery level, etc. - is otherwise only refreshed when you interact
+# with them. Ignored while keep_connected is on (the link is already live).
+CONF_POLL_INTERVAL: Final = "poll_interval"
+DEFAULT_POLL_INTERVAL: Final = 0
+
 CONF_CRED_FILE = DOMAIN + "/devices.json"
 
 BATTERY_STATE_LOW: Final = "low"

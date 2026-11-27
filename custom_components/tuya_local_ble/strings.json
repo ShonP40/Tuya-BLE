@@ -44,10 +44,12 @@
         "title": "Tuya BLE options",
         "description": "Optional connection behavior. Keep connected is mainly useful for battery locks (e.g. Raykube) when you want live reverse sync; default is off.",
         "data": {
-          "keep_connected": "Keep connected (24/7)"
+          "keep_connected": "Keep connected (24/7)",
+          "poll_interval": "Poll interval (minutes, 0 = off)"
         },
         "data_description": {
-          "keep_connected": "When enabled, maintain a persistent BLE session with periodic keepalive (like Gimdow). When disabled, connect on demand and use advertisement refresh. Prefer ESPHome BLE proxies if enabling this."
+          "keep_connected": "When enabled, maintain a persistent BLE session with periodic keepalive (like Gimdow). When disabled, connect on demand and use advertisement refresh. Prefer ESPHome BLE proxies if enabling this.",
+          "poll_interval": "Minutes between automatic status refreshes (connect, read, disconnect). 0 disables polling. Useful for sleepy battery devices so values like battery level stay current without interacting with the device. Ignored while Keep connected is on."
         }
       },
       "manage_schedules": {
